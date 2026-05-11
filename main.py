@@ -3,6 +3,8 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
 TOKEN = os.getenv('BOT_TOKEN')
+TARGET_GROUP_ID = -1003809059141
+
 
 # 1. أمر التاك (5 بـ 5)
 async def tag_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -40,20 +42,52 @@ async def no_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await context.bot.send_message(update.effective_chat.id, f"⚠️ ممنوع الروابط يا {update.effective_user.first_name}!")
             except: pass
 
-# 3. أمر سحب الميديا
-async def get_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# 3. أمر سحب الميدي
+
+# حالة البوت (عشان نعرف هو مستني رابط ولا لا)
+WAITING_FOR_LINK = 1
+
+# 1. أمر طلب السحب
+async def start_scraping(update: Update, context: ContextTypes.DEFAULT_TYPE):
     m = await context.bot.get_chat_member(update.effective_chat.id, update.effective_user.id)
     if m.status not in ['administrator', 'creator']: return
-    await update.message.reply_text("البوت هيسحب الميديا الجديدة اللي هتنزل في الجروب ويبعتها!")
+    
+    await update.message.reply_text("🔗 تمام يا وحش، ارسل لي رابط الجروب اللي عاوز اسحب منه الصور والفيديوهات:")
+    context.user_data['state'] = WAITING_FOR_LINK
+
+# 2. معالج الرسائل (عشان ياخد الرابط أو ينقل الميديا)
+async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_state = context.user_data.get('state')
+
+    # لو البوت مستني منك رابط الجروب
+    if user_state == WAITING_FOR_LINK:
+        group_link = update.message.text
+        await update.message.reply_text(f"✅ تم ربط المصدر! أي ميديا هتنزل في الجروب ده أو تعمل لها فورورد هنا، هتروح فوراً للمستودع.")
+        context.user_data['state'] = None
+        context.chat_data['scraping_active'] = True
+        return
+
+    # لو وضع السحب شغال.. أي ميديا توصل (صورة/فيديو) انقلها فوراً
+    if context.chat_data.get('scraping_active'):
+        if update.message.photo or update.message.video or update.message.document:
+            try:
+                # نقل الميديا للجروب الهدف
+                await update.message.forward(chat_id=TARGET_GROUP_ID)
+            except Exception as e:
+                print(f"Error forwarding: {e}")
 
 def main():
     if not TOKEN: return
     app = Application.builder().token(TOKEN).build()
+    
     app.add_handler(CommandHandler("all", tag_all))
-    app.add_handler(CommandHandler("getmedia", get_media))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, no_links))
-    app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, collect))
+    app.add_handler(CommandHandler("getmedia", start_scraping)) # الأمر اللي بيشغل الحوار
+    
+    # معالج شامل للرسائل والميديا
+    app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_messages))
+    
     app.run_polling()
+
 
 if __name__ == '__main__':
     main()
