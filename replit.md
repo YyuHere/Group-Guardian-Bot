@@ -1,45 +1,48 @@
-# [Project name]
+# Telegram Group Bot
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+A Python Telegram bot with mention-all, anti-link enforcement, and media retrieval for group chats.
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
-- `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- `python bot/main.py` — run the bot (requires `BOT_TOKEN` env var)
+- Workflow: `Telegram Bot` — configured in Replit to run the bot via console
 
 ## Stack
 
-- pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+- Python 3
+- python-telegram-bot 21.9 (async, polling mode)
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `bot/main.py` — entire bot logic (handlers, admin checks, media store)
+- `bot/requirements.txt` — Python dependencies
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- **In-memory user tracking**: `seen_users` dict stores user IDs/usernames since the bot joined. Resets on restart — acceptable for a Telegram bot.
+- **In-memory media store**: `bot_data["media_store"]` keyed by chat_id stores photo/video file_ids since bot joined.
+- **Single combined handler**: All non-command messages go through one handler that tracks users, stores media, and checks for links — avoids conflicting handler ordering.
+- **HTML parse mode for mentions**: Users without a username get an inline HTML mention link (`tg://user?id=...`) instead of `@username`.
+- **Chunk size 5**: `/all` sends mentions in groups of 5 per message to avoid spam.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+- `/all` — Admin-only. Mentions every user the bot has seen, 5 per message.
+- `/media` — Admin-only. Forwards all stored photos/videos from the group to the requesting admin's DM.
+- Anti-link — Auto-deletes messages containing HTTP/HTTPS/www links from non-admins.
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+- Bot token via `os.getenv('BOT_TOKEN')` — safe to host on GitHub and Railway.
+- Only admins can use `/all` and `/media`.
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- The bot must have **Delete Messages** permission in the group for anti-link to work.
+- The bot must be an admin itself in the group for `/all` and anti-link to function.
+- Media retrieval only covers messages received **after the bot joined** — Telegram's Bot API does not allow reading chat history.
+- Users must have started a DM with the bot before it can send them media via `/media`.
 
 ## Pointers
 
-- See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
+- See the `pnpm-workspace` skill for workspace structure info (Node.js artifacts are separate)
