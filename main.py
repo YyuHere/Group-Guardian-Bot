@@ -1,4 +1,4 @@
-import os, re, asyncio
+import os, re, asyncio, html
 from telegram import Update
 from telegram.constants import ChatMemberStatus
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ChatMemberHandler
@@ -21,11 +21,19 @@ def save_group_id(chat_id):
         with open(GROUPS_FILE, "a") as f:
             f.write(f"{chat_id}\n")
 
-# دالة لقراءة الجروبات التي تم تسجيلها
+# دالة آمنة لقراءة الجروبات وتجنب الأخطاء
 def get_tracked_groups():
     if not os.path.exists(GROUPS_FILE): return []
+    tracked = []
     with open(GROUPS_FILE, "r") as f:
-        return [int(line.strip()) for line in f if line.strip()]
+        for line in f:
+            line = line.strip()
+            if line:
+                try:
+                    tracked.append(int(line))
+                except ValueError:
+                    continue
+    return tracked
 
 # 1. وظيفة مراقبة المشرفين (سحب الرتب فوراً عند الطرد)
 async def on_chat_member_updated(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -88,53 +96,63 @@ async def handle_everything(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.delete()
             except: pass
 
-# 4. أمر جلب الروابط (خاص بك أنت فقط)
+# 4. أمر جلب الروابط (مؤمن بالكامل بالـ HTML)
 async def get_all_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # التحقق من أن مرسل الأمر هو صاحب الأيدي الخاص بك
+    # التحقق من الأيدي المكتوب في الأعلى
     if update.effective_user.id != MY_USER_ID:
         return
-    
-    chat_ids = get_tracked_groups()
-    if not chat_ids:
-        await update.message.reply_text("📭 لم يتم تسجيل أي مجموعات في القائمة حتى الآن.")
-        return
         
-    await update.message.reply_text("🔄 جاري فحص المجموعات وتجهيز الروابط...")
-    
-    report = "📋 **قائمة المجموعات المشترك بها البوت:**\n\n"
-    
-    for cid in chat_ids:
+    try:
+        # إرسال رد فوري للتأكد من استجابة البوت
+        status_msg = await update.message.reply_text("🔄 جاري فحص المجموعات وتجهيز الروابط...")
+        
+        chat_ids = get_tracked_groups()
+        if not chat_ids:
+            await status_msg.edit_text("📭 لم يتم تسجيل أي مجموعات في القائمة حتى الآن.")
+            return
+            
+        report = "📋 <b>قائمة المجموعات المشترك بها البوت:</b>\n\n"
+        
+        for cid in chat_ids:
+            try:
+                chat = await context.bot.get_chat(cid)
+                link = chat.invite_link
+                
+                if not link:
+                    try:
+                        invite_obj = await context.bot.create_chat_invite_link(chat_id=cid, name="رابط تحكم المطور")
+                        link = invite_obj.invite_link
+                    except:
+                        link = "❌ (تأكد أن البوت مشرف ولديه صلاحية الروابط)"
+                
+                # تنظيف اسم الجروب لمنع كراش الصيغة
+                safe_title = html.escape(chat.title)
+                report += f"👥 <b>{safe_title}</b>\n🆔 <code>{cid}</code>\n🔗 {link}\n\n"
+            except Exception:
+                report += f"🗑️ <b>مجموعة غير متاحة</b>\n🆔 <code>{cid}</code>\n❌ البوت لم يعد عضواً فيها.\n\n"
+                
+        # حذف رسالة الانتظار وإرسال التقرير النهائي
+        await status_msg.delete()
+        
+        if len(report) > 4000:
+            chunks = [report[i:i+4000] for i in range(0, len(report), 4000)]
+            for chunk in chunks:
+                await update.message.reply_text(chunk, parse_mode="HTML")
+        else:
+            await update.message.reply_text(report, parse_mode="HTML")
+            
+    except Exception as master_error:
+        # لو انهار الكود لأي سبب آخر، سيخبرك بالسبب فوراً
+        print(f"Error in links command: {master_error}")
         try:
-            chat = await context.bot.get_chat(cid)
-            link = chat.invite_link
-            
-            # إذا لم يكن هناك رابط افتراضي، سيقوم البوت بإنشاء رابط دعوة جديد
-            # (يتطلب أن يكون البوت مشرفاً في المجموعة ويمتلك صلاحية إضافة مستخدمين)
-            if not link:
-                try:
-                    invite_obj = await context.bot.create_chat_invite_link(chat_id=cid, name="رابط تحكم المطور")
-                    link = invite_obj.invite_link
-                except:
-                    link = "❌ (لا يمكن جلب الرابط؛ تأكد أن البوت مشرف ولديه صلاحية الروابط)"
-            
-            report += f"👥 **{chat.title}**\n🆔 `{cid}`\n🔗 {link}\n\n"
-        except Exception:
-            # في حال قام أحدهم بطرد البوت نهائياً من الجروب
-            report += f"🗑️ **مجموعة غير متاحة**\n🆔 `{cid}`\n❌ البوت لم يعد عضواً في هذا الجروب.\n\n"
-            
-    # تقسيم الرسالة إذا كانت طويلة جداً لأن تليجرام يسمح بـ 4096 حرف كحد أقصى للرسالة الواحدة
-    if len(report) > 4000:
-        chunks = [report[i:i+4000] for i in range(0, len(report), 4000)]
-        for chunk in chunks:
-            await update.message.reply_text(chunk, parse_mode="Markdown")
-    else:
-        await update.message.reply_text(report, parse_mode="Markdown")
+            await update.message.reply_text(f"❌ حدث خطأ داخلي:\n<code>{html.escape(str(master_error))}</code>", parse_mode="HTML")
+        except: pass
 
 def main():
     if not TOKEN: return
     app = Application.builder().token(TOKEN).build()
     
-    # أمر جلب الروابط للأدمن
+    # أمر جلب الروابط للأدمن (يجب أن يكون في البداية)
     app.add_handler(CommandHandler("links", get_all_links))
     
     # مراقب المشرفين
@@ -146,7 +164,7 @@ def main():
     # منع الروابط والمعالج العام
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_everything))
     
-    print("البوت شغال.. تم إضافة ميزة جلب الروابط عبر أمر /links بنجاح.")
+    print("البوت شغال.. تم تفعيل الحماية وأمر /links الآمن بنجاح.")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == '__main__':
