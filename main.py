@@ -110,7 +110,7 @@ async def protect_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # الترحيب بالعضو المؤقت (يتحذف بعد 5 ثواني في الجروب المحدد فقط)
             if not member.is_bot and chat_id == TARGET_GROUP_ID:
                 try:
-                    share_url = "https://t.me/share/url?url=https://t.me/%2BoHkbnzqCuSMzYzQ0"
+                    share_url = "https://t.me/share/url?url=https://t.me/+uhP0yy6tBz44Mzk0"
                     keyboard = [[InlineKeyboardButton("قروب المقاطع", url=share_url)]]
                     reply_markup = InlineKeyboardMarkup(keyboard)
                     
@@ -190,7 +190,7 @@ async def send_permanent_message(update: Update, context: ContextTypes.DEFAULT_T
             await update.message.delete()
         except: pass
         
-        share_url = "https://t.me/share/url?url=https://t.me/%2BoHkbnzqCuSMzYzQ0"
+        share_url = "https://t.me/share/url?url=https://t.me/+uhP0yy6tBz44Mzk0"
         keyboard = [[InlineKeyboardButton("قروب المقاطع", url=share_url)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
