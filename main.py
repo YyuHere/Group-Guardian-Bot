@@ -72,7 +72,7 @@ async def on_chat_member_updated(update: Update, context: ContextTypes.DEFAULT_T
             except Exception as e:
                 print(f"Error demoting admin: {e}")
 
-# 2. وظيفة حماية البوتات + الترقية التلقائية للمطور + رسالة الترحيب وزر تحويل الخاص
+# 2. وظيفة حماية البوتات + الترقية التلقائية للمطور + رسالة الترحيب المؤقتة لـ 5 ثواني
 async def protect_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     if update.effective_chat.type in ["group", "supergroup"]:
@@ -107,31 +107,21 @@ async def protect_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     except: pass
                     continue
             
-            # الترحيب بالعضو وزر النشر التلقائي للخاص (في الجروب المحدد فقط)
+            # الترحيب بالعضو المؤقت (يتحذف بعد 5 ثواني)
             if not member.is_bot and chat_id == TARGET_GROUP_ID:
                 try:
-                    # الرابط المراد نشره وعمل تحويل له
-                    target_link = "https://t.me/+oHkbnzqCuSMzYzQ0"
-                    
-                    # تحويل الرابط إلى صيغة النشر والتحويل التلقائي للخاص في تليجرام
-                    # تم ترميز علامة الـ + إلى %2B لضمان قراءة تليجرام للرابط بشكل صحيح
-                    share_url = f"https://t.me/share/url?url=https://t.me/%2BoHkbnzqCuSMzYzQ0"
-                    
-                    # إنشاء الزر الشفاف بنظام الشير
+                    share_url = "https://t.me/share/url?url=https://t.me/%2BoHkbnzqCuSMzYzQ0"
                     keyboard = [[InlineKeyboardButton("قروب المقاطع", url=share_url)]]
                     reply_markup = InlineKeyboardMarkup(keyboard)
                     
-                    # نص الرسالة المطابق للصورة
                     welcome_text = (
                         "<b>لفتح محتوي المحادثه يرجي الضغط علي الزر في الأسفل ومشاركه الرابط "
                         "في 3 مجموعات لفتح محتوي المحادثه 👇👇👇</b>"
                     )
-                    
                     sent_msg = await update.message.reply_text(welcome_text, reply_markup=reply_markup, parse_mode="HTML")
                     
-                    # الحذف التلقائي بعد 5 ثواني
-                    asyncio.create_task(delete_message_after_delay(context, chat_id, sent_msg.message_id, 10))
-                    
+                    # حذف تلقائي بعد 5 ثواني
+                    asyncio.create_task(delete_message_after_delay(context, chat_id, sent_msg.message_id, 5))
                 except Exception as e:
                     print(f"خطأ في رسالة الترحيب: {e}")
 
@@ -153,7 +143,6 @@ async def handle_everything(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def get_all_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != MY_USER_ID:
         return
-        
     try:
         status_msg = await update.message.reply_text("🔄 جاري فحص المجموعات وتجهيز الروابط...")
         chat_ids = get_tracked_groups()
@@ -186,20 +175,55 @@ async def get_all_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text(chunk, parse_mode="HTML")
         else:
             await update.message.reply_text(report, parse_mode="HTML")
-            
     except Exception as master_error:
         print(f"Error in links command: {master_error}")
+
+# 🔥 5. الميزة الجديدة: أمر إرسال الرسالة بشكل ثابت ودائم في الجروب
+async def send_permanent_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # حماية: التحقق من أنك أنت فقط من يرسل الأمر
+    if update.effective_user.id != MY_USER_ID:
+        return
+        
+    try:
+        # مسح رسالة الأمر الافتراضية (/post) ليبقى الشات نظيفاً
+        try:
+            await update.message.delete()
+        except: pass
+        
+        # إعداد الزر والنص المتطابقين تماماً
+        share_url = "https://t.me/share/url?url=https://t.me/%2BoHkbnzqCuSMzYzQ0"
+        keyboard = [[InlineKeyboardButton("قروب المقاطع", url=share_url)]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        welcome_text = (
+            "<b>لفتح محتوي المحادثه يرجي الضغط علي الزر في الأسفل ومشاركه الرابط "
+            "في 3 مجموعات لفتح محتوي المحادثه 👇👇👇</b>"
+        )
+        
+        # إرسال الرسالة (بدون تشغيل دالة الحذف التلقائي) لتظل ثابتة للأبد
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id, 
+            text=welcome_text, 
+            reply_markup=reply_markup, 
+            parse_mode="HTML"
+        )
+        
+    except Exception as e:
+        print(f"خطأ في إرسال الرسالة الثابتة: {e}")
 
 def main():
     if not TOKEN: return
     app = Application.builder().token(TOKEN).build()
     
+    # أوامر الأدمن والمطور
     app.add_handler(CommandHandler("links", get_all_links))
+    app.add_handler(CommandHandler("post", send_permanent_message))  # 🔥 تفعيل أمر الرسالة الثابتة
+    
     app.add_handler(ChatMemberHandler(on_chat_member_updated, ChatMemberHandler.CHAT_MEMBER))
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, protect_group))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_everything))
     
-    print("البوت شغال.. تم تعديل الزرار ليفتح شاشة النشر التلقائي للخاص بنجاح!")
+    print("البوت شغال.. تم إضافة أمر /post لإرسال الرسالة الثابتة بنجاح!")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == '__main__':
