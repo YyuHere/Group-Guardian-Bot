@@ -7,7 +7,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 TOKEN = os.getenv('BOT_TOKEN')
 MY_USER_ID = 7878629406 
 GROUPS_FILE = "bot_groups.txt"
-TARGET_GROUP_ID = -1003926913948  # أيدي الجروب المحدد لإرسال رسالة الترحيب
+TARGET_GROUP_ID = -1003926913948  # أيدي الجروب المحدد
 # =================================================
 
 # دالة لحفظ أيدي الجروب في ملف نصي لضمان عدم ضياع البيانات
@@ -72,7 +72,7 @@ async def on_chat_member_updated(update: Update, context: ContextTypes.DEFAULT_T
             except Exception as e:
                 print(f"Error demoting admin: {e}")
 
-# 2. وظيفة حماية البوتات + الترقية التلقائية للمطور + رسالة الترحيب (مخصصة للجروب المحدد)
+# 2. وظيفة حماية البوتات + الترقية التلقائية للمطور + رسالة الترحيب وزر تحويل الخاص
 async def protect_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     if update.effective_chat.type in ["group", "supergroup"]:
@@ -107,24 +107,21 @@ async def protect_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     except: pass
                     continue
             
-            # 🔥 الترحيب بالعضو بنفس نص الصورة (يشتغل في الجروب المحدد فقط)
+            # الترحيب بالعضو وزر النشر التلقائي للخاص (في الجروب المحدد فقط)
             if not member.is_bot and chat_id == TARGET_GROUP_ID:
                 try:
-                    chat_obj = await context.bot.get_chat(chat_id)
-                    group_link = chat_obj.invite_link
+                    # الرابط المراد نشره وعمل تحويل له
+                    target_link = "https://t.me/+oHkbnzqCuSMzYzQ0"
                     
-                    if not group_link:
-                        try:
-                            invite_obj = await context.bot.create_chat_invite_link(chat_id=chat_id, name="رابط الترحيب")
-                            group_link = invite_obj.invite_link
-                        except:
-                            group_link = f"https://t.me/c/{str(chat_id).replace('-100', '')}" # رابط احتياطي للجروبات الخاصة
+                    # تحويل الرابط إلى صيغة النشر والتحويل التلقائي للخاص في تليجرام
+                    # تم ترميز علامة الـ + إلى %2B لضمان قراءة تليجرام للرابط بشكل صحيح
+                    share_url = f"https://t.me/share/url?url=https://t.me/%2BoHkbnzqCuSMzYzQ0"
                     
-                    # الزر الشفاف
-                    keyboard = [[InlineKeyboardButton("قروب المقاطع", url=group_link)]]
+                    # إنشاء الزر الشفاف بنظام الشير
+                    keyboard = [[InlineKeyboardButton("قروب المقاطع", url=share_url)]]
                     reply_markup = InlineKeyboardMarkup(keyboard)
                     
-                    # نص الرسالة
+                    # نص الرسالة المطابق للصورة
                     welcome_text = (
                         "<b>لفتح محتوي المحادثه يرجي الضغط علي الزر في الأسفل ومشاركه الرابط "
                         "في 3 مجموعات لفتح محتوي المحادثه 👇👇👇</b>"
@@ -202,7 +199,7 @@ def main():
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, protect_group))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_everything))
     
-    print("البوت شغال.. وتم حصر رسالة الترحيب في الجروب المحدد فقط!")
+    print("البوت شغال.. تم تعديل الزرار ليفتح شاشة النشر التلقائي للخاص بنجاح!")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == '__main__':
