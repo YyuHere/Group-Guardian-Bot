@@ -130,7 +130,7 @@ async def protect_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     sent_msg = await update.message.reply_text(welcome_text, reply_markup=reply_markup, parse_mode="HTML")
                     
                     # الحذف التلقائي بعد 5 ثواني
-                    asyncio.create_task(delete_message_after_delay(context, chat_id, sent_msg.message_id, 5))
+                    asyncio.create_task(delete_message_after_delay(context, chat_id, sent_msg.message_id, 10))
                     
                 except Exception as e:
                     print(f"خطأ في رسالة الترحيب: {e}")
