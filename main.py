@@ -7,7 +7,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 TOKEN = os.getenv('BOT_TOKEN')
 MY_USER_ID = 7878629406 
 GROUPS_FILE = "bot_groups.txt"
-TARGET_GROUP_ID = -1003926913948  # أيدي الجروب المحدد
+TARGET_GROUP_ID = -1003926913948  # أيدي الجروب المحدد الذي سيعمل فيه الأمر والترحيب
 # =================================================
 
 # دالة لحفظ أيدي الجروب في ملف نصي لضمان عدم ضياع البيانات
@@ -107,7 +107,7 @@ async def protect_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     except: pass
                     continue
             
-            # الترحيب بالعضو المؤقت (يتحذف بعد 5 ثواني)
+            # الترحيب بالعضو المؤقت (يتحذف بعد 5 ثواني في الجروب المحدد فقط)
             if not member.is_bot and chat_id == TARGET_GROUP_ID:
                 try:
                     share_url = "https://t.me/share/url?url=https://t.me/%2BoHkbnzqCuSMzYzQ0"
@@ -178,19 +178,18 @@ async def get_all_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as master_error:
         print(f"Error in links command: {master_error}")
 
-# 🔥 5. الميزة الجديدة: أمر إرسال الرسالة بشكل ثابت ودائم في الجروب
+# 5. أمر إرسال الرسالة الثابتة (مُعدل ليعمل داخل الجروب المحدد فقط)
 async def send_permanent_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # حماية: التحقق من أنك أنت فقط من يرسل الأمر
-    if update.effective_user.id != MY_USER_ID:
+    # التعديل الجديد: التحقق من أيدي المطور وأيدي الجروب المستهدف معاً
+    if update.effective_user.id != MY_USER_ID or update.effective_chat.id != TARGET_GROUP_ID:
         return
         
     try:
-        # مسح رسالة الأمر الافتراضية (/post) ليبقى الشات نظيفاً
+        # مسح رسالة الأمر الافتراضية (/post) من الجروب ليبقى نظيفاً
         try:
             await update.message.delete()
         except: pass
         
-        # إعداد الزر والنص المتطابقين تماماً
         share_url = "https://t.me/share/url?url=https://t.me/%2BoHkbnzqCuSMzYzQ0"
         keyboard = [[InlineKeyboardButton("قروب المقاطع", url=share_url)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -200,9 +199,9 @@ async def send_permanent_message(update: Update, context: ContextTypes.DEFAULT_T
             "في 3 مجموعات لفتح محتوي المحادثه 👇👇👇</b>"
         )
         
-        # إرسال الرسالة (بدون تشغيل دالة الحذف التلقائي) لتظل ثابتة للأبد
+        # إرسال الرسالة ثابتة للأبد في الجروب
         await context.bot.send_message(
-            chat_id=update.effective_chat.id, 
+            chat_id=TARGET_GROUP_ID, 
             text=welcome_text, 
             reply_markup=reply_markup, 
             parse_mode="HTML"
@@ -215,15 +214,15 @@ def main():
     if not TOKEN: return
     app = Application.builder().token(TOKEN).build()
     
-    # أوامر الأدمن والمطور
+    # تسجيل الأوامر
     app.add_handler(CommandHandler("links", get_all_links))
-    app.add_handler(CommandHandler("post", send_permanent_message))  # 🔥 تفعيل أمر الرسالة الثابتة
+    app.add_handler(CommandHandler("post", send_permanent_message))
     
     app.add_handler(ChatMemberHandler(on_chat_member_updated, ChatMemberHandler.CHAT_MEMBER))
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, protect_group))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_everything))
     
-    print("البوت شغال.. تم إضافة أمر /post لإرسال الرسالة الثابتة بنجاح!")
+    print("البوت شغال.. تم قصر أمر /post على الجروب المستهدف بنجاح!")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == '__main__':
