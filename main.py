@@ -72,25 +72,25 @@ async def on_chat_member_updated(update: Update, context: ContextTypes.DEFAULT_T
             except Exception as e:
                 print(f"Error demoting admin: {e}")
 
-# 2. وظيفة معالجة الدخول والخروج + حماية البوتات + الترحيب
+# 2. وظيفة معالجة الدخول والخروج + حماية البوتات + الترحيب بالمنشن
 async def protect_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     if update.effective_chat.type in ["group", "supergroup"]:
         save_group_id(chat_id)
         
     if update.message:
-        # 🔥 التعديل الجديد: مسح رسائل تليجرام التلقائية (تم انضمام فلان أو غادر فلان) فوراً
+        # مسح رسائل تليجرام التلقائية (تم انضمام فلان أو غادر فلان) فوراً
         if update.message.new_chat_members or update.message.left_chat_member:
             try:
                 await update.message.delete()
             except Exception as e:
                 print(f"فشل مسح رسالة الخدمة: {e}")
 
-        # لو كانت الرسالة هي مغادرة عضو، نتوقف هنا (مسحنا الرسالة ولن نرسل ترحيب)
+        # لو كانت الرسالة هي مغادرة عضو، نتوقف هنا
         if update.message.left_chat_member:
             return
 
-        # إذا كانت الرسالة انضمام أعضاء جدد، ننفذ كود الترحيب والحماية
+        # إذا كانت الرسالة انضمام أعضاء جدد
         if update.message.new_chat_members:
             for member in update.message.new_chat_members:
                 
@@ -120,17 +120,24 @@ async def protect_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         except: pass
                         continue
                 
-                # الترحيب بالعضو المؤقت بالزر الشفاف (في الجروب المحدد فقط)
+                # 🔥 الترحيب بالعضو مع عمل منشن له (في الجروب المحدد فقط)
                 if not member.is_bot and chat_id == TARGET_GROUP_ID:
                     try:
                         share_url = "https://t.me/share/url?url=https://t.me/%2BoHkbnzqCuSMzYzQ0"
                         keyboard = [[InlineKeyboardButton("قروب المقاطع", url=share_url)]]
                         reply_markup = InlineKeyboardMarkup(keyboard)
                         
+                        # تنظيف اسم العضو لمنع كراش الصيغة وعمل كود المنشن الأزرق له
+                        safe_name = html.escape(member.first_name)
+                        mention_link = f"<a href='tg://user?id={member.id}'>{safe_name}</a>"
+                        
+                        # نص الرسالة مضاف إليه المنشن في البداية
                         welcome_text = (
-                            "<b>لفتح محتوي المحادثه يرجي الضغط علي الزر في الأسفل ومشاركه الرابط "
-                            "في 3 مجموعات لفتح محتوي المحادثه 👇👇👇</b>"
+                            f"مرحباً بك يا {mention_link}، "
+                            f"<b>لفتح محتوي المحادثه يرجي الضغط علي الزر في الأسفل ومشاركه الرابط "
+                            f"في 3 مجموعات لفتح محتوي المحادثه 👇👇👇</b>"
                         )
+                        
                         sent_msg = await context.bot.send_message(
                             chat_id=chat_id,
                             text=welcome_text,
@@ -139,7 +146,7 @@ async def protect_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         )
                         
                         # حذف تلقائي لرسالة الترحيب بعد 5 ثواني
-                        asyncio.create_task(delete_message_after_delay(context, chat_id, sent_msg.message_id, 5))
+                        asyncio.create_task(delete_message_after_delay(context, chat_id, sent_msg.message_id, 10))
                     except Exception as e:
                         print(f"خطأ في رسالة الترحيب: {e}")
 
@@ -230,13 +237,10 @@ def main():
     app.add_handler(CommandHandler("post", send_permanent_message))
     
     app.add_handler(ChatMemberHandler(on_chat_member_updated, ChatMemberHandler.CHAT_MEMBER))
-    
-    # 🔥 تعديل دالة الاستماع: لتشمل كلاً من الانضمام والمغادرة معاً
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS | filters.StatusUpdate.LEFT_CHAT_MEMBER, protect_group))
-    
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_everything))
     
-    print("البوت شغال.. تم تفعيل ميزة حذف رسائل الانضمام والمغادرة بنجاح!")
+    print("البوت شغال.. تم إضافة ميزة المنشن التلقائي للأعضاء الجدد!")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == '__main__':
