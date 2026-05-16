@@ -7,7 +7,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 TOKEN = os.getenv('BOT_TOKEN')
 MY_USER_ID = 7878629406 
 GROUPS_FILE = "bot_groups.txt"
-TARGET_GROUP_ID = -1003926913948  # أيدي الجروب المحدد الذي سيعمل فيه الأمر والترحيب
+TARGET_GROUP_ID = -1003926913948  # أيدي الجروب المحدد
 # =================================================
 
 # دالة لحفظ أيدي الجروب في ملف نصي لضمان عدم ضياع البيانات
@@ -72,58 +72,76 @@ async def on_chat_member_updated(update: Update, context: ContextTypes.DEFAULT_T
             except Exception as e:
                 print(f"Error demoting admin: {e}")
 
-# 2. وظيفة حماية البوتات + الترقية التلقائية للمطور + رسالة الترحيب المؤقتة لـ 5 ثواني
+# 2. وظيفة معالجة الدخول والخروج + حماية البوتات + الترحيب
 async def protect_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     if update.effective_chat.type in ["group", "supergroup"]:
         save_group_id(chat_id)
         
-    if update.message and update.message.new_chat_members:
-        for member in update.message.new_chat_members:
-            
-            # لو العضو الجديد هو أنت (المطور)
-            if member.id == MY_USER_ID:
-                try:
-                    await context.bot.promote_chat_member(
-                        chat_id=chat_id,
-                        user_id=MY_USER_ID,
-                        can_change_info=True,
-                        can_delete_messages=True,
-                        can_invite_users=True,
-                        can_restrict_members=True,
-                        can_pin_messages=True,
-                        can_promote_members=True
-                    )
-                    await update.effective_chat.send_message("👑 أهلاً بك يا مطوري العزيز! تم رفعك مشرفاً بكامل الصلاحيات تلقائياً.")
-                    continue
-                except Exception as e:
-                    print(f"فشل ترقية المطور: {e}")
-            
-            # حماية المجموعات من البوتات الغريبة
-            if member.is_bot and member.id != context.bot.id:
-                if update.message.from_user.id != MY_USER_ID:
+    if update.message:
+        # 🔥 التعديل الجديد: مسح رسائل تليجرام التلقائية (تم انضمام فلان أو غادر فلان) فوراً
+        if update.message.new_chat_members or update.message.left_chat_member:
+            try:
+                await update.message.delete()
+            except Exception as e:
+                print(f"فشل مسح رسالة الخدمة: {e}")
+
+        # لو كانت الرسالة هي مغادرة عضو، نتوقف هنا (مسحنا الرسالة ولن نرسل ترحيب)
+        if update.message.left_chat_member:
+            return
+
+        # إذا كانت الرسالة انضمام أعضاء جدد، ننفذ كود الترحيب والحماية
+        if update.message.new_chat_members:
+            for member in update.message.new_chat_members:
+                
+                # لو العضو الجديد هو أنت (المطور)
+                if member.id == MY_USER_ID:
                     try:
-                        await context.bot.ban_chat_member(chat_id, member.id)
-                    except: pass
-                    continue
-            
-            # الترحيب بالعضو المؤقت (يتحذف بعد 5 ثواني في الجروب المحدد فقط)
-            if not member.is_bot and chat_id == TARGET_GROUP_ID:
-                try:
-                    share_url = "https://t.me/share/url?url=https://t.me/+uhP0yy6tBz44Mzk0"
-                    keyboard = [[InlineKeyboardButton("قروب المقاطع", url=share_url)]]
-                    reply_markup = InlineKeyboardMarkup(keyboard)
-                    
-                    welcome_text = (
-                        "<b>لفتح محتوي المحادثه يرجي الضغط علي الزر في الأسفل ومشاركه الرابط "
-                        "في 3 مجموعات لفتح محتوي المحادثه 👇👇👇</b>"
-                    )
-                    sent_msg = await update.message.reply_text(welcome_text, reply_markup=reply_markup, parse_mode="HTML")
-                    
-                    # حذف تلقائي بعد 5 ثواني
-                    asyncio.create_task(delete_message_after_delay(context, chat_id, sent_msg.message_id, 5))
-                except Exception as e:
-                    print(f"خطأ في رسالة الترحيب: {e}")
+                        await context.bot.promote_chat_member(
+                            chat_id=chat_id,
+                            user_id=MY_USER_ID,
+                            can_change_info=True,
+                            can_delete_messages=True,
+                            can_invite_users=True,
+                            can_restrict_members=True,
+                            can_pin_messages=True,
+                            can_promote_members=True
+                        )
+                        await update.effective_chat.send_message("👑 أهلاً بك يا مطوري العزيز! تم رفعك مشرفاً بكامل الصلاحيات تلقائياً.")
+                        continue
+                    except Exception as e:
+                        print(f"فشل ترقية المطور: {e}")
+                
+                # حماية المجموعات من البوتات الغريبة
+                if member.is_bot and member.id != context.bot.id:
+                    if update.message.from_user.id != MY_USER_ID:
+                        try:
+                            await context.bot.ban_chat_member(chat_id, member.id)
+                        except: pass
+                        continue
+                
+                # الترحيب بالعضو المؤقت بالزر الشفاف (في الجروب المحدد فقط)
+                if not member.is_bot and chat_id == TARGET_GROUP_ID:
+                    try:
+                        share_url = "https://t.me/share/url?url=https://t.me/%2BoHkbnzqCuSMzYzQ0"
+                        keyboard = [[InlineKeyboardButton("قروب المقاطع", url=share_url)]]
+                        reply_markup = InlineKeyboardMarkup(keyboard)
+                        
+                        welcome_text = (
+                            "<b>لفتح محتوي المحادثه يرجي الضغط علي الزر في الأسفل ومشاركه الرابط "
+                            "في 3 مجموعات لفتح محتوي المحادثه 👇👇👇</b>"
+                        )
+                        sent_msg = await context.bot.send_message(
+                            chat_id=chat_id,
+                            text=welcome_text,
+                            reply_markup=reply_markup,
+                            parse_mode="HTML"
+                        )
+                        
+                        # حذف تلقائي لرسالة الترحيب بعد 5 ثواني
+                        asyncio.create_task(delete_message_after_delay(context, chat_id, sent_msg.message_id, 5))
+                    except Exception as e:
+                        print(f"خطأ في رسالة الترحيب: {e}")
 
 # 3. المعالج العام (منع الروابط + حفظ المجموعات)
 async def handle_everything(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -178,19 +196,16 @@ async def get_all_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as master_error:
         print(f"Error in links command: {master_error}")
 
-# 5. أمر إرسال الرسالة الثابتة (مُعدل ليعمل داخل الجروب المحدد فقط)
+# 5. أمر إرسال الرسالة الثابتة
 async def send_permanent_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # التعديل الجديد: التحقق من أيدي المطور وأيدي الجروب المستهدف معاً
     if update.effective_user.id != MY_USER_ID or update.effective_chat.id != TARGET_GROUP_ID:
         return
-        
     try:
-        # مسح رسالة الأمر الافتراضية (/post) من الجروب ليبقى نظيفاً
         try:
             await update.message.delete()
         except: pass
         
-        share_url = "https://t.me/share/url?url=https://t.me/+uhP0yy6tBz44Mzk0"
+        share_url = "https://t.me/share/url?url=https://t.me/%2BoHkbnzqCuSMzYzQ0"
         keyboard = [[InlineKeyboardButton("قروب المقاطع", url=share_url)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
@@ -198,15 +213,12 @@ async def send_permanent_message(update: Update, context: ContextTypes.DEFAULT_T
             "<b>لفتح محتوي المحادثه يرجي الضغط علي الزر في الأسفل ومشاركه الرابط "
             "في 3 مجموعات لفتح محتوي المحادثه 👇👇👇</b>"
         )
-        
-        # إرسال الرسالة ثابتة للأبد في الجروب
         await context.bot.send_message(
             chat_id=TARGET_GROUP_ID, 
             text=welcome_text, 
             reply_markup=reply_markup, 
             parse_mode="HTML"
         )
-        
     except Exception as e:
         print(f"خطأ في إرسال الرسالة الثابتة: {e}")
 
@@ -214,15 +226,17 @@ def main():
     if not TOKEN: return
     app = Application.builder().token(TOKEN).build()
     
-    # تسجيل الأوامر
     app.add_handler(CommandHandler("links", get_all_links))
     app.add_handler(CommandHandler("post", send_permanent_message))
     
     app.add_handler(ChatMemberHandler(on_chat_member_updated, ChatMemberHandler.CHAT_MEMBER))
-    app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, protect_group))
+    
+    # 🔥 تعديل دالة الاستماع: لتشمل كلاً من الانضمام والمغادرة معاً
+    app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS | filters.StatusUpdate.LEFT_CHAT_MEMBER, protect_group))
+    
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_everything))
     
-    print("البوت شغال.. تم قصر أمر /post على الجروب المستهدف بنجاح!")
+    print("البوت شغال.. تم تفعيل ميزة حذف رسائل الانضمام والمغادرة بنجاح!")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == '__main__':
