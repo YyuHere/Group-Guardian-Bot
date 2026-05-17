@@ -5,15 +5,6 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 
 from pyrogram import Client
 
-try:
-    from pytgcalls import PyTgCalls
-    from pytgcalls.types import MediaStream
-    PYTGCALLS_AVAILABLE = True
-except ImportError:
-    PYTGCALLS_AVAILABLE = False
-    PyTgCalls = None
-    MediaStream = None
-
 TOKEN = os.getenv('BOT_TOKEN')
 MY_USER_ID = 7878629406
 GROUPS_FILE = "bot_groups.txt"
@@ -35,8 +26,6 @@ userbot = Client(
     api_hash=API_HASH,
     session_string=SESSION_STRING
 ) if API_ID and API_HASH and SESSION_STRING else None
-
-call_client = PyTgCalls(userbot) if userbot and PYTGCALLS_AVAILABLE else None
 
 LAST_VIDEO_PATH = "stream_video.mp4"
 
@@ -150,22 +139,6 @@ async def handle_everything(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type in ["group", "supergroup"]: save_group_id(chat_id)
     if not update.message: return
 
-    if update.effective_chat.type == "private" and user_id == MY_USER_ID and update.message.video:
-        state = CALL_STATES.get(user_id, {})
-        if state.get("step") == "WAITING_VIDEO":
-            target_chat = state.get("chat_id")
-            status_msg = await update.message.reply_text("📥 جاري تحميل الفيديو...")
-            video_file = await context.bot.get_file(update.message.video.file_id)
-            await video_file.download_to_drive(LAST_VIDEO_PATH)
-            await status_msg.edit_text("🚀 جاري تشغيل الكول...")
-            try:
-                await call_client.join_group_call(target_chat, MediaStream(LAST_VIDEO_PATH))
-                await update.message.reply_text("✅ الحساب دخل الكول وبدأ البث بنجاح!")
-            except Exception as e:
-                await update.message.reply_text(f"❌ خطأ: {e}")
-            CALL_STATES[user_id] = {}
-        return
-
     if not update.message.text: return
 
     if update.effective_chat.type == "private" and user_id == MY_USER_ID:
@@ -264,7 +237,7 @@ async def start_video_call(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type != "private":
         await update.message.reply_text("❌ استخدم هذا الأمر في الخاص مع البوت!")
         return
-    if not call_client:
+    if not userbot:
         await update.message.reply_text("❌ الحساب المساعد غير متصل!\nتأكد من إضافة SESSION_STRING في Railway Variables.")
         return
     CALL_STATES[update.effective_user.id] = {"step": "WAITING_GROUP_ID"}
@@ -272,17 +245,12 @@ async def start_video_call(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def stop_video_call(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != MY_USER_ID: return
-    if not call_client:
+    if not userbot:
         await update.message.reply_text("❌ الحساب المساعد غير متصل!")
         return
     if update.effective_chat.type == "private":
         await update.message.reply_text("❌ استخدم هذا الأمر داخل الجروب!")
         return
-    try:
-        await call_client.leave_group_call(update.effective_chat.id)
-        await update.message.reply_text("🛑 تم إيقاف البث بنجاح.")
-    except Exception as e:
-        await update.message.reply_text(f"❌ خطأ: {e}")
 
 async def photo_cleaner(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.photo: return
@@ -293,9 +261,8 @@ async def photo_cleaner(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except: pass
 
 async def main_async():
-    if userbot and call_client:
+    if userbot:
         await userbot.start()
-        await call_client.start()
         print("✅ الحساب المساعد متصل وجاهز!")
     else:
         print("⚠️ الحساب المساعد غير متصل - تأكد من المتغيرات في Railway")
