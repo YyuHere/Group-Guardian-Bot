@@ -3,7 +3,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ChatMemberStatus
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ChatMemberHandler
 
-# 📦 مكتبات الحساب المساعد وبث المكالمات الحديثة المستقرة
+# 📦 مكتبات الحساب المساعد وبث المكالمات الحديثة المستقرة (v2.1.0)
 from pyrogram import Client
 from pytgcalls import PyTgCalls
 from pytgcalls.types import MediaStream
@@ -247,7 +247,7 @@ async def unlock_photos_command(update: Update, context: ContextTypes.DEFAULT_TY
     sent = await update.effective_chat.send_message("🔓 <b>تم فتح إرسال الصور في المجموعة، مسموح للجميع الآن!</b>", parse_mode="HTML")
     asyncio.create_task(delete_message_after_delay(context, update.effective_chat.id, sent.message_id, 5))
 
-# 🔥 7. الأوامر الجديدة: تشغيل البث متوافق بالملي مع نسخة 2.1.0 المستقرة والحديثة لبث الفيديو
+# 🔥 7. الأوامر الجديدة المتوافقة بالملي مع النسخة الحديثة المستقرة v2.1.0 لبث الفيديو
 async def start_video_call(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await is_user_admin(update, context): return
     if not call_client:
@@ -259,7 +259,7 @@ async def start_video_call(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     await update.message.reply_text("🚀 الحساب المساعد يدخل الكول حالاً ويشغل الفيديو كام...")
     try:
-        # الإعدادات المباشرة للنسخة الحديثة المستقرة
+        # التمرير المباشر والسريع المتوافق مع إصدار 2.1.0 الصافي
         await call_client.join_group_call(
             chat_id, 
             MediaStream(LAST_VIDEO_PATH)
@@ -292,7 +292,7 @@ def get_nude_protected_groups_placeholder():
 async def check_image_nsfw_logic(file_id):
     return False
 
-# تشغيل البوت والحساب معاً بسلاسة
+# تحويل الـ main للتشغيل غير المتزامن التوافقي لـ Railway ليعمل البوت والحساب معاً بسلاسة
 async def main_async():
     if userbot and call_client:
         await userbot.start()
