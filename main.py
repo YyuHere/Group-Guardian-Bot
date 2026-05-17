@@ -1,4 +1,4 @@
-import os, re, asyncio, html
+import os, re, asyncio, html, requests
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ChatMemberStatus
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ChatMemberHandler
@@ -7,8 +7,58 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 TOKEN = os.getenv('BOT_TOKEN')
 MY_USER_ID = 7878629406 
 GROUPS_FILE = "bot_groups.txt"
+NUDE_GROUPS_FILE = "nude_protected_groups.txt" # ملف حفظ جروبات حماية الصور
 TARGET_GROUP_ID = -1003926913948  # أيدي الجروب المحدد
 # =================================================
+
+# 💡 إعدادات الـ API لفحص الصور العارية (يمكنك استخدام موقع Sightengine مجاناً والحصول على مفتاح)
+SIGHTENGINE_USER = 'YOUR_USER_ID'
+SIGHTENGINE_SECRET = 'YOUR_API_SECRET'
+
+# دالة فحص الصور عبر الذكاء الاصطناعي (ترجع True لو عارية)
+def is_image_nude(image_path):
+    try:
+        if SIGHTENGINE_USER == 'YOUR_USER_ID': 
+            return False # أمان عشان الكود ميعلقش لو لسه مغيرتش المفاتيح
+            
+        params = {
+            'models': 'nudity-2.0',
+            'api_user': SIGHTENGINE_USER,
+            'api_secret': SIGHTENGINE_SECRET
+        }
+        with open(image_path, 'rb') as img:
+            files = {'media': img}
+            response = requests.post('https://api.sightengine.com/1.0/check.json', files=files, data=params)
+            output = response.json()
+        
+        if output.get('status') == 'success':
+            nudity = output.get('nudity', {})
+            # لو نسبة العري أو الإثارة أعلى من 50%
+            if nudity.get('sexual_activity', 0) > 0.5 or nudity.get('erotica', 0) > 0.5:
+                return True
+        return False
+    except Exception as e:
+        print(f"Error checking image: {e}")
+        return False
+
+# دالة حفظ وإلغاء جروبات حماية الصور من الخاص
+def manage_nude_file(chat_id, action="add"):
+    if not os.path.exists(NUDE_GROUPS_FILE):
+        with open(NUDE_GROUPS_FILE, "w") as f: pass
+    with open(NUDE_GROUPS_FILE, "r") as f:
+        ids = f.read().splitlines()
+    if action == "add" and str(chat_id) not in ids:
+        with open(NUDE_GROUPS_FILE, "a") as f: f.write(f"{chat_id}\n")
+    elif action == "del" and str(chat_id) in ids:
+        ids.remove(str(chat_id))
+        with open(NUDE_GROUPS_FILE, "w") as f:
+            for i in ids: f.write(f"{i}\n")
+
+# دالة قراءة الجروبات المفعل بها حماية الصور
+def get_nude_protected_groups():
+    if not os.path.exists(NUDE_GROUPS_FILE): return []
+    with open(NUDE_GROUPS_FILE, "r") as f:
+        return [int(line.strip()) for line in f if line.strip()]
 
 # دالة لحفظ أيدي الجروب في ملف نصي لضمان عدم ضياع البيانات
 def save_group_id(chat_id):
@@ -229,18 +279,78 @@ async def send_permanent_message(update: Update, context: ContextTypes.DEFAULT_T
     except Exception as e:
         print(f"خطأ في إرسال الرسالة الثابتة: {e}")
 
+# 🔥 ميزة فحص ومسح الصور العارية في الجروبات المحددة فقط
+async def monitor_photos(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or not update.message.photo: return
+    chat_id = update.effective_chat.id
+    
+    # التحقق هل الجروب الحالي تم تفعيل ميزة فحص الصور فيه بالخاص؟
+    if chat_id not in get_nude_protected_groups():
+        return
+        
+    # استثناء المشرفين والمطور من الفحص
+    res = await context.bot.get_chat_member(chat_id, update.effective_user.id)
+    if res.status in [ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER] or update.effective_user.id == MY_USER_ID:
+        return
+
+    try:
+        photo_file = await context.bot.get_file(update.message.photo[-1].file_id)
+        temp_path = f"temp_{update.message.message_id}.jpg"
+        await photo_file.download_to_drive(temp_path)
+        
+        if is_image_nude(temp_path):
+            await update.message.delete() # حذف الصورة فوراً
+            
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+    except Exception as e:
+        print(f"Error checking nude photo: {e}")
+
+# 🔥 أوامر التحكم من الخاص لتحديد الجروب المراد فحص صوره
+async def toggle_nude_protection(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != MY_USER_ID: return
+    
+    command = context.args
+    if not command:
+        await update.message.reply_text(
+            "ℹ️ <b>طريقة تفعيل حماية الصور بالخاص:</b>\n"
+            "• لتفعيل جروب: <code>/add_nude -100xxxxxxx</code>\n"
+            "• لإلغاء جروب: <code>/del_nude -100xxxxxxx</code>", 
+            parse_mode="HTML"
+        )
+        return
+        
+    try:
+        target_chat = int(command[0])
+        cmd_name = update.message.text.split()[0]
+        
+        if "add_nude" in cmd_name:
+            manage_nude_file(target_chat, "add")
+            await update.message.reply_text(f"✅ تم تفعيل مسح الصور العارية في الجروب: <code>{target_chat}</code>", parse_mode="HTML")
+        elif "del_nude" in cmd_name:
+            manage_nude_file(target_chat, "del")
+            await update.message.reply_text(f"❌ تم إلغاء حماية الصور في الجروب: <code>{target_chat}</code>", parse_mode="HTML")
+    except ValueError:
+        await update.message.reply_text("❌ أكتب أيدي الجروب بشكل صحيح أرقام فقط.")
+
 def main():
     if not TOKEN: return
     app = Application.builder().token(TOKEN).build()
     
+    # تسجيل الأوامر
     app.add_handler(CommandHandler("links", get_all_links))
     app.add_handler(CommandHandler("post", send_permanent_message))
+    app.add_handler(CommandHandler(["add_nude", "del_nude"], toggle_nude_protection)) # 🔥 أوامر تفعيل مسح الصور بالخاص
     
     app.add_handler(ChatMemberHandler(on_chat_member_updated, ChatMemberHandler.CHAT_MEMBER))
+    
+    # 🔥 مراقب الصور لمسح العري
+    app.add_handler(MessageHandler(filters.PHOTO, monitor_photos))
+    
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS | filters.StatusUpdate.LEFT_CHAT_MEMBER, protect_group))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_everything))
     
-    print("البوت شغال.. تم إضافة ميزة المنشن التلقائي للأعضاء الجدد!")
+    print("البوت شغال بكودك بالكامل.. وتم دمج ميزة التحكم بالصور العارية من الخاص!")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == '__main__':
