@@ -14,7 +14,6 @@ except ImportError:
     PyTgCalls = None
     MediaStream = None
 
-# ================= الإعدادات الأساسية =================
 TOKEN = os.getenv('BOT_TOKEN')
 MY_USER_ID = 7878629406
 GROUPS_FILE = "bot_groups.txt"
@@ -40,7 +39,6 @@ userbot = Client(
 call_client = PyTgCalls(userbot) if userbot and PYTGCALLS_AVAILABLE else None
 
 LAST_VIDEO_PATH = "stream_video.mp4"
-# =================================================
 
 async def is_user_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -103,7 +101,6 @@ async def delete_message_after_delay(context, chat_id, message_id, delay):
     try: await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
     except: pass
 
-# 1. مراقبة المشرفين
 async def on_chat_member_updated(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type in ["group", "supergroup"]: save_group_id(update.effective_chat.id)
     result = update.chat_member
@@ -116,7 +113,6 @@ async def on_chat_member_updated(update: Update, context: ContextTypes.DEFAULT_T
                 await update.effective_chat.send_message(f"🚫 تم سحب رتبة {result.from_user.first_name} لمحاولة طرد عضو!")
             except Exception as e: print(f"Error: {e}")
 
-# 2. حماية الجروب
 async def protect_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     if update.effective_chat.type in ["group", "supergroup"]: save_group_id(chat_id)
@@ -148,7 +144,6 @@ async def protect_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         asyncio.create_task(delete_message_after_delay(context, chat_id, sent_msg.message_id, 5))
                     except: pass
 
-# 3. المعالج العام
 async def handle_everything(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     user_id = update.effective_user.id
@@ -200,7 +195,6 @@ async def handle_everything(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 try: await update.message.delete()
                 except: pass
 
-# 4. الروابط
 async def get_all_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != MY_USER_ID: return
     try:
@@ -229,7 +223,6 @@ async def get_all_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(report, parse_mode="HTML")
     except Exception as e: print(f"Error: {e}")
 
-# 5. الرسالة الثابتة
 async def send_permanent_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != MY_USER_ID or update.effective_chat.id != TARGET_GROUP_ID: return
     try:
@@ -240,7 +233,6 @@ async def send_permanent_message(update: Update, context: ContextTypes.DEFAULT_T
         await context.bot.send_message(chat_id=TARGET_GROUP_ID, text="<b>لفتح محتوي المحادثه يرجي الضغط علي الزر في الأسفل ومشاركه الرابط في 3 مجموعات 👇👇👇</b>", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
     except Exception as e: print(f"Error: {e}")
 
-# 6. حماية الصور
 async def start_nsfw_setup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != MY_USER_ID: return
     if update.effective_chat.type != "private":
@@ -267,7 +259,6 @@ async def unlock_photos_command(update: Update, context: ContextTypes.DEFAULT_TY
     sent = await update.effective_chat.send_message("🔓 <b>تم فتح الصور!</b>", parse_mode="HTML")
     asyncio.create_task(delete_message_after_delay(context, update.effective_chat.id, sent.message_id, 5))
 
-# 7. تشغيل الكول
 async def start_video_call(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != MY_USER_ID: return
     if update.effective_chat.type != "private":
@@ -279,7 +270,6 @@ async def start_video_call(update: Update, context: ContextTypes.DEFAULT_TYPE):
     CALL_STATES[update.effective_user.id] = {"step": "WAITING_GROUP_ID"}
     await update.message.reply_text("📋 أرسل ID الجروب اللي هيتفتح فيه الكول:\n\nمثال: <code>-1001234567890</code>", parse_mode="HTML")
 
-# 8. إيقاف الكول
 async def stop_video_call(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != MY_USER_ID: return
     if not call_client:
@@ -294,7 +284,6 @@ async def stop_video_call(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ خطأ: {e}")
 
-# 9. مسح الصور
 async def photo_cleaner(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.photo: return
     chat_id = update.effective_chat.id
@@ -329,7 +318,7 @@ async def main_async():
     await app.initialize()
     await app.start()
     print("✅ البوت شغال على Railway!")
-    await app.updater.start_polling(allowed_updates=Update.ALL_TYPES)
+    await app.updater.start_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
     while True: await asyncio.sleep(1)
 
 if __name__ == '__main__':
