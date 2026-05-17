@@ -318,4 +318,6 @@ async def main_async():
     await app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
 
 if __name__ == '__main__':
+    import nest_asyncio
+    nest_asyncio.apply()
     asyncio.run(main_async())
