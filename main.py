@@ -4,6 +4,7 @@ from telegram.constants import ChatMemberStatus
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ChatMemberHandler
 
 from pyrogram import Client
+from tgcalls import TgCalls
 
 TOKEN = os.getenv('BOT_TOKEN')
 MY_USER_ID = 7878629406
@@ -25,6 +26,8 @@ userbot = Client(
     api_hash=API_HASH,
     session_string=SESSION_STRING
 ) if API_ID and API_HASH and SESSION_STRING else None
+
+tgcalls_client = TgCalls(userbot) if userbot else None
 
 async def is_user_admin(update, context):
     user_id = update.effective_user.id
@@ -147,8 +150,11 @@ async def handle_everything(update, context):
             CALL_STATES[user_id] = {}
             await update.message.reply_text("✅ تم تحميل الفيديو!\n\n📞 جاري فتح الكول...")
             try:
-                await userbot.send_message(group_id, "🎬 جاري تشغيل الفيديو...")
-                await update.message.reply_text("✅ تم! الحساب المساعد هيفتح الكول يدوياً.")
+                await tgcalls_client.join_group_call(
+                    group_id,
+                    "stream_video.mp4"
+                )
+                await update.message.reply_text("✅ تم فتح الكول وتشغيل الفيديو!")
             except Exception as e:
                 await update.message.reply_text(f"❌ خطأ: {e}")
             return
@@ -258,7 +264,11 @@ async def stop_video_call(update, context):
     if update.effective_chat.type == "private":
         await update.message.reply_text("❌ استخدم هذا الأمر داخل الجروب!")
         return
-    await update.message.reply_text("✅ تم إيقاف الكول!")
+    try:
+        await tgcalls_client.leave_group_call(update.effective_chat.id)
+        await update.message.reply_text("✅ تم إيقاف الكول!")
+    except Exception as e:
+        await update.message.reply_text(f"❌ خطأ: {e}")
 
 async def photo_cleaner(update, context):
     if not update.message or not update.message.photo: return
@@ -272,6 +282,9 @@ async def main_async():
     if userbot:
         await userbot.start()
         print("✅ الحساب المساعد متصل!")
+    if tgcalls_client:
+        await tgcalls_client.start()
+        print("✅ TgCalls جاهز!")
 
     app = Application.builder().token(TOKEN).build()
 
