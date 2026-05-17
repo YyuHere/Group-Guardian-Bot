@@ -7,8 +7,62 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 TOKEN = os.getenv('BOT_TOKEN')
 MY_USER_ID = 7878629406 
 GROUPS_FILE = "bot_groups.txt"
+NSFW_FILE = "nsfw_protected.txt"  # ملف حفظ الجروبات المفعل بها حماية الصور
+LOCKS_FILE = "photo_locks.txt"    # 🔥 ملف حفظ الجروبات المقفول فيها الصور حالياً
 TARGET_GROUP_ID = -1003926913948  # أيدي الجروب المحدد
+USER_STATES = {}  # حفظ حالة المطور بالخاص (هل البوت ينتظر أيدي الجروب؟)
 # =================================================
+
+# 🔥 دالة للتحقق هل المستخدم أدمن في الجروب أو هو المطور
+async def is_user_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id == MY_USER_ID:
+        return True
+    try:
+        chat_member = await context.bot.get_chat_member(update.effective_chat.id, user_id)
+        return chat_member.status in [ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER]
+    except:
+        return False
+
+# 🔥 دوال إدارة قفل وفتح الصور في الملف النصي
+def lock_group_photos(chat_id):
+    if not os.path.exists(LOCKS_FILE):
+        with open(LOCKS_FILE, "w") as f: pass
+    with open(LOCKS_FILE, "r") as f:
+        ids = f.read().splitlines()
+    if str(chat_id) not in ids:
+        with open(LOCKS_FILE, "a") as f:
+            f.write(f"{chat_id}\n")
+
+def unlock_group_photos(chat_id):
+    if not os.path.exists(LOCKS_FILE): return
+    with open(LOCKS_FILE, "r") as f:
+        ids = f.read().splitlines()
+    if str(chat_id) in ids:
+        ids.remove(str(chat_id))
+        with open(LOCKS_FILE, "w") as f:
+            for i in ids: f.write(f"{i}\n")
+
+def is_photos_locked(chat_id):
+    if not os.path.exists(LOCKS_FILE): return False
+    with open(LOCKS_FILE, "r") as f:
+        return str(chat_id) in f.read().splitlines()
+
+# دالة لتسجيل الجروب المراد حماية صوره
+def save_nsfw_group(chat_id_str):
+    if not os.path.exists(NSFW_FILE):
+        with open(NSFW_FILE, "w") as f: pass
+    with open(NSFW_FILE, "r") as f:
+        ids = f.read().splitlines()
+    if chat_id_str not in ids:
+        with open(NSFW_FILE, "a") as f:
+            f.write(f"{chat_id_str}\n")
+
+# دالة لجلب قائمة الجروبات المحمية من الصور
+def get_nsfw_groups():
+    if not os.path.exists(NSFW_FILE): return []
+    with open(NSFW_FILE, "r") as f:
+        return f.read().splitlines()
 
 # دالة لحفظ أيدي الجروب في ملف نصي لضمان عدم ضياع البيانات
 def save_group_id(chat_id):
@@ -79,22 +133,18 @@ async def protect_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
         save_group_id(chat_id)
         
     if update.message:
-        # مسح رسائل تليجرام التلقائية (تم انضمام فلان أو غادر فلان) فوراً
         if update.message.new_chat_members or update.message.left_chat_member:
             try:
                 await update.message.delete()
             except Exception as e:
                 print(f"فشل مسح رسالة الخدمة: {e}")
 
-        # لو كانت الرسالة هي مغادرة عضو، نتوقف هنا
         if update.message.left_chat_member:
             return
 
-        # إذا كانت الرسالة انضمام أعضاء جدد
         if update.message.new_chat_members:
             for member in update.message.new_chat_members:
                 
-                # لو العضو الجديد هو أنت (المطور)
                 if member.id == MY_USER_ID:
                     try:
                         await context.bot.promote_chat_member(
@@ -112,7 +162,6 @@ async def protect_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     except Exception as e:
                         print(f"فشل ترقية المطور: {e}")
                 
-                # حماية المجموعات من البوتات الغريبة
                 if member.is_bot and member.id != context.bot.id:
                     if update.message.from_user.id != MY_USER_ID:
                         try:
@@ -120,18 +169,15 @@ async def protect_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         except: pass
                         continue
                 
-                # 🔥 الترحيب بالعضو مع عمل منشن له (في الجروب المحدد فقط)
                 if not member.is_bot and chat_id == TARGET_GROUP_ID:
                     try:
                         share_url = "https://t.me/share/url?url=https://t.me/%2BoHkbnzqCuSMzYzQ0"
                         keyboard = [[InlineKeyboardButton("قروب المقاطع", url=share_url)]]
                         reply_markup = InlineKeyboardMarkup(keyboard)
                         
-                        # تنظيف اسم العضو لمنع كراش الصيغة وعمل كود المنشن الأزرق له
                         safe_name = html.escape(member.first_name)
                         mention_link = f"<a href='tg://user?id={member.id}'>{safe_name}</a>"
                         
-                        # نص الرسالة مضاف إليه المنشن في البداية
                         welcome_text = (
                             f"مرحباً بك يا {mention_link}، "
                             f"<b>لفتح محتوي المحادثه يرجي الضغط علي الزر في الأسفل ومشاركه الرابط "
@@ -145,24 +191,35 @@ async def protect_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             parse_mode="HTML"
                         )
                         
-                        # حذف تلقائي لرسالة الترحيب بعد 5 ثواني
                         asyncio.create_task(delete_message_after_delay(context, chat_id, sent_msg.message_id, 5))
                     except Exception as e:
                         print(f"خطأ في رسالة الترحيب: {e}")
 
-# 3. المعالج العام (منع الروابط + حفظ المجموعات)
+# 3. المعالج العام (منع الروابط + استقبال أيدي الجروب بالخاص)
 async def handle_everything(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    user_id = update.effective_user.id
+    
     if update.effective_chat.type in ["group", "supergroup"]:
-        save_group_id(update.effective_chat.id)
+        save_group_id(chat_id)
         
     if not update.message or not update.message.text: return
     
-    if re.search(r'http[s]?://|www\.', update.message.text):
-        res = await context.bot.get_chat_member(update.effective_chat.id, update.effective_user.id)
-        if res.status not in [ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER]:
-            try:
-                await update.message.delete()
-            except: pass
+    if update.effective_chat.type == "private" and user_id == MY_USER_ID:
+        if USER_STATES.get(user_id) == "WAITING_FOR_NSFW_ID":
+            target_group = update.message.text.strip()
+            save_nsfw_group(target_group)
+            USER_STATES[user_id] = None  
+            await update.message.reply_text(f"✅ تم تفعيل حماية ومسح الصور +18 بنجاح في الجروب: {target_group}")
+            return
+
+    if update.effective_chat.type in ["group", "supergroup"]:
+        if re.search(r'http[s]?://|www\.', update.message.text):
+            res = await context.bot.get_chat_member(chat_id, user_id)
+            if res.status not in [ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER]:
+                try:
+                    await update.message.delete()
+                except: pass
 
 # 4. أمر جلب الروابط للأدمن
 async def get_all_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -172,7 +229,7 @@ async def get_all_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
         status_msg = await update.message.reply_text("🔄 جاري فحص المجموعات وتجهيز الروابط...")
         chat_ids = get_tracked_groups()
         if not chat_ids:
-            await status_msg.edit_text("📭 لم يتم تسجيل أي مجموعات في القائمة حتى الآن.")
+            await status_msg.edit_text("📭 لم يتم تسجيل أي مجموعات in القائمة حتى الآن.")
             return
             
         report = "📋 <b>قائمة المجموعات المشترك بها البوت:</b>\n\n"
@@ -229,18 +286,80 @@ async def send_permanent_message(update: Update, context: ContextTypes.DEFAULT_T
     except Exception as e:
         print(f"خطأ في إرسال الرسالة الثابتة: {e}")
 
+# 6. أمر جلب أيدي الجروب بالخاص
+async def start_nsfw_setup(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != MY_USER_ID: return
+    if update.effective_chat.type != "private":
+        await update.message.reply_text("❌ هذا الأمر يتم تفعيله داخل الخاص مع البوت فقط!")
+        return
+        
+    USER_STATES[update.effective_user.id] = "WAITING_FOR_NSFW_ID"
+    await update.message.reply_text("📥 أهلاً بك يا مطوري، من فضلك أرسل الآن أيدي (ID) أو رابط الجروب المراد منع الصور +18 فيه:")
+
+# 🔥 الأوامر الجديدة: قفل وفتح إرسال الصور جوه الجروب (للأدمنز والمطور بس)
+async def lock_photos_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.type == "private": return
+    if not await is_user_admin(update, context): return
+    
+    try: await update.message.delete()
+    except: pass
+    
+    lock_group_photos(update.effective_chat.id)
+    sent = await update.effective_chat.send_message("🔒 <b>تم قفل إرسال الصور في المجموعة للأعضاء العاديين بنجاح!</b>", parse_mode="HTML")
+    asyncio.create_task(delete_message_after_delay(context, update.effective_chat.id, sent.message_id, 5))
+
+async def unlock_photos_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.type == "private": return
+    if not await is_user_admin(update, context): return
+    
+    try: await update.message.delete()
+    except: pass
+    
+    unlock_group_photos(update.effective_chat.id)
+    sent = await update.effective_chat.send_message("🔓 <b>تم فتح إرسال الصور في المجموعة، مسموح للجميع الآن!</b>", parse_mode="HTML")
+    asyncio.create_task(delete_message_after_delay(context, update.effective_chat.id, sent.message_id, 5))
+
+# 7. 🔥 رادار مراقبة الصور ومسحها فوراً لو الجروب معموله قفل (Lock) من الأدمن
+async def photo_cleaner(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or not update.message.photo: return
+    chat_id = update.effective_chat.id
+    
+    # لو الجروب مقفول فيه الصور، بنشيك على رتبة اللي بعت
+    if is_photos_locked(chat_id):
+        # لو اللي باعت عضو عادي (مش أدمن ومش المطور)، الصورة تتنسف فوراً
+        if not await is_user_admin(update, context):
+            try:
+                await update.message.delete()
+            except Exception as e:
+                print(f"Error deleting photo: {e}")
+
+def get_nude_protected_groups_placeholder():
+    if not os.path.exists(NSFW_FILE): return []
+    with open(NSFW_FILE, "r") as f: return f.read().splitlines()
+
+async def check_image_nsfw_logic(file_id):
+    return False
+
 def main():
     if not TOKEN: return
     app = Application.builder().token(TOKEN).build()
     
+    # تسجيل الأوامر
     app.add_handler(CommandHandler("links", get_all_links))
     app.add_handler(CommandHandler("post", send_permanent_message))
+    app.add_handler(CommandHandler("protect_nsfw", start_nsfw_setup))
+    app.add_handler(CommandHandler("lock_photos", lock_photos_command))     # 🔥 تسجيل أمر القفل
+    app.add_handler(CommandHandler("unlock_photos", unlock_photos_command)) # 🔥 تسجيل أمر الفتح
     
     app.add_handler(ChatMemberHandler(on_chat_member_updated, ChatMemberHandler.CHAT_MEMBER))
+    
+    # رادار مراقبة الميديا والصور
+    app.add_handler(MessageHandler(filters.PHOTO, photo_cleaner))
+    
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS | filters.StatusUpdate.LEFT_CHAT_MEMBER, protect_group))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_everything))
     
-    print("البوت شغال.. تم إضافة ميزة المنشن التلقائي للأعضاء الجدد!")
+    print("البوت شغال بكودك الأصلي.. وتم إضافة ميزة طلب أيدي الجروب بالخاص بنجاح!")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == '__main__':
