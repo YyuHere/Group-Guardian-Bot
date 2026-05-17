@@ -1,5 +1,6 @@
+
 python-telegram-bot
 pyrogram==2.0.106
 tgcrypto
 nest_asyncio
-pytgcalls
+pytgcalls==3.0.0.dev24
