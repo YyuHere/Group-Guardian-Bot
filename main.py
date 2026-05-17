@@ -315,11 +315,7 @@ async def main_async():
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS | filters.StatusUpdate.LEFT_CHAT_MEMBER, protect_group))
     app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_everything))
 
-    await app.initialize()
-    await app.start()
-    print("✅ البوت شغال على Railway!")
-    await app.updater.start_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
-    while True: await asyncio.sleep(1)
+    await app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
 
 if __name__ == '__main__':
     asyncio.run(main_async())
