@@ -3,6 +3,12 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ChatMemberStatus
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ChatMemberHandler
 
+# 📦 مكتبات الحساب المساعد وبث المكالمات الجديدة
+from pyrogram import Client
+from pytgcalls import PyTgCalls
+from pytgcalls.types import MediaStream
+from pytgcalls.types.stream import VideoParameters, AudioParameters
+
 # ================= الإعدادات الأساسية =================
 TOKEN = os.getenv('BOT_TOKEN')
 MY_USER_ID = 7878629406 
@@ -11,6 +17,17 @@ NSFW_FILE = "nsfw_protected.txt"  # ملف حفظ الجروبات المفعل 
 LOCKS_FILE = "photo_locks.txt"    # 🔥 ملف حفظ الجروبات المقفول فيها الصور حالياً
 TARGET_GROUP_ID = -1003926913948  # أيدي الجروب المحدد
 USER_STATES = {}  # حفظ حالة المطور بالخاص (هل البوت ينتظر أيدي الجروب؟)
+
+# 🔐 جلب بيانات الحساب المساعد من متغيرات Railway بأمان تلقائياً
+API_ID_ENV = os.getenv('API_ID')
+API_ID = int(API_ID_ENV) if API_ID_ENV and API_ID_ENV.isdigit() else 0
+API_HASH = os.getenv('API_HASH')
+
+# تشغيل الحساب المساعد ومحرك المكالمات لو تم ضبط المتغيرات في السيرفر
+userbot = Client("helper_session", api_id=API_ID, api_hash=API_HASH) if API_ID and API_HASH else None
+call_client = PyTgCalls(userbot) if userbot else None
+
+LAST_VIDEO_PATH = "stream_video.mp4" # مسار حفظ الفيديو المؤقت للبث
 # =================================================
 
 # 🔥 دالة للتحقق هل المستخدم أدمن في الجروب أو هو المطور
@@ -195,7 +212,7 @@ async def protect_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     except Exception as e:
                         print(f"خطأ في رسالة الترحيب: {e}")
 
-# 3. المعالج العام (منع الروابط + استقبال أيدي الجروب بالخاص)
+# 3. المعالج العام (منع الروابط + استقبال أيدي الجروب بالخاص + تحميل فيديوهات البث)
 async def handle_everything(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     user_id = update.effective_user.id
@@ -203,14 +220,24 @@ async def handle_everything(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type in ["group", "supergroup"]:
         save_group_id(chat_id)
         
-    if not update.message or not update.message.text: return
+    if not update.message: return
     
+    # 📥 ميزة الخاص الجديدة: إذا أرسل المطور فيديو في الخاص، البوت يحمله فوراً لتشغيله في الكول
+    if update.effective_chat.type == "private" and user_id == MY_USER_ID and update.message.video:
+        status_msg = await update.message.reply_text("📥 جاري تحميل الفيديو وتجهيزه للبث على السيرفر...")
+        video_file = await context.bot.get_file(update.message.video.file_id)
+        await video_file.download_to_drive(LAST_VIDEO_PATH)
+        await status_msg.edit_text("✅ تم حفظ الفيديو بنجاح! تقدر دلوقتي تشغل الكول بأمر /start_call جوه الجروب.")
+        return
+
+    if not update.message.text: return
+
     if update.effective_chat.type == "private" and user_id == MY_USER_ID:
         if USER_STATES.get(user_id) == "WAITING_FOR_NSFW_ID":
             target_group = update.message.text.strip()
             save_nsfw_group(target_group)
             USER_STATES[user_id] = None  
-            await update.message.reply_text(f"✅ تم تفعيل حماية ومسح الصور +18 بنجاح في الجروب: {target_group}")
+            await update.message.reply_text(f"✅ تم تفعيل حماية ومسح الصور +18 بنجاح in الجروب: {target_group}")
             return
 
     if update.effective_chat.type in ["group", "supergroup"]:
@@ -296,7 +323,7 @@ async def start_nsfw_setup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     USER_STATES[update.effective_user.id] = "WAITING_FOR_NSFW_ID"
     await update.message.reply_text("📥 أهلاً بك يا مطوري، من فضلك أرسل الآن أيدي (ID) أو رابط الجروب المراد منع الصور +18 فيه:")
 
-# 🔥 الأوامر الجديدة: قفل وفتح إرسال الصور جوه الجروب (للأدمنز والمطور بس)
+# 🔥 الأوامر القديمة: قفل وفتح إرسال الصور جوه الجروب (للأدمنز والمطور بس)
 async def lock_photos_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type == "private": return
     if not await is_user_admin(update, context): return
@@ -319,14 +346,42 @@ async def unlock_photos_command(update: Update, context: ContextTypes.DEFAULT_TY
     sent = await update.effective_chat.send_message("🔓 <b>تم فتح إرسال الصور في المجموعة، مسموح للجميع الآن!</b>", parse_mode="HTML")
     asyncio.create_task(delete_message_after_delay(context, update.effective_chat.id, sent.message_id, 5))
 
-# 7. 🔥 رادار مراقبة الصور ومسحها فوراً لو الجروب معموله قفل (Lock) من الأدمن
+# 🔥 7. الأوامر الجديدة: تشغيل وإغلاق مكالمة الفيديو وكتم المنضمين (للأدمنز والمطور)
+async def start_video_call(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await is_user_admin(update, context): return
+    if not call_client:
+        await update.message.reply_text("❌ لم يتم إعداد الحساب المساعد بأمان في متغيرات Railway!")
+        return
+    chat_id = update.effective_chat.id
+    if not os.path.exists(LAST_VIDEO_PATH):
+        await update.message.reply_text("❌ لم تقم بإرسال أي فيديو للبوت بالخاص أولاً لتشغيله!")
+        return
+    await update.message.reply_text("🚀 الحساب المساعد يدخل الكول حالاً ويشغل الفيديو كام...")
+    try:
+        await call_client.join_group_call(
+            chat_id, 
+            MediaStream(LAST_VIDEO_PATH, VideoParameters.default_video(), AudioParameters.default_audio())
+        )
+        # إعطاء صلاحية الكتم للحساب المساعد ليجبر أي شخص يدخل الشات الصوتي على أخذ ميوت تلقائي
+        await userbot.set_administrator_privileges(chat_id, userbot.me.id, can_manage_video_chats=True)
+    except Exception as e: 
+        await update.message.reply_text(f"❌ حدث خطأ أثناء تشغيل الكول: {e}")
+
+async def stop_video_call(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await is_user_admin(update, context): return
+    if not call_client: return
+    try:
+        await call_client.leave_group_call(update.effective_chat.id)
+        await update.message.reply_text("🛑 تم إيقاف البث ومغادرة الكول بنجاح.")
+    except Exception as e: 
+        print(f"Error leaving call: {e}")
+
+# 8. 🔥 رادار ومراقب مسح الصور التلقائي لو الشات معموله قفل (Lock) من الأدمن
 async def photo_cleaner(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.photo: return
     chat_id = update.effective_chat.id
     
-    # لو الجروب مقفول فيه الصور، بنشيك على رتبة اللي بعت
     if is_photos_locked(chat_id):
-        # لو اللي باعت عضو عادي (مش أدمن ومش المطور)، الصورة تتنسف فوراً
         if not await is_user_admin(update, context):
             try:
                 await update.message.delete()
@@ -340,27 +395,38 @@ def get_nude_protected_groups_placeholder():
 async def check_image_nsfw_logic(file_id):
     return False
 
-def main():
-    if not TOKEN: return
+# 🔥 تحويل الـ main للتشغيل غير المتزامن التوافقي لـ Railway ليعمل البوت والحساب معاً بسلاسة
+async def main_async():
+    # تشغيل الحساب المساعد ومحرك المكالمات بالتوازي في الخلفية
+    if userbot and call_client:
+        await userbot.start()
+        await call_client.start()
+        print("الحساب المساعد ومحرك المكالمات جاهزين لبث الكام!")
+        
     app = Application.builder().token(TOKEN).build()
     
-    # تسجيل الأوامر
+    # تسجيل كافة الأوامر
     app.add_handler(CommandHandler("links", get_all_links))
     app.add_handler(CommandHandler("post", send_permanent_message))
     app.add_handler(CommandHandler("protect_nsfw", start_nsfw_setup))
-    app.add_handler(CommandHandler("lock_photos", lock_photos_command))     # 🔥 تسجيل أمر القفل
-    app.add_handler(CommandHandler("unlock_photos", unlock_photos_command)) # 🔥 تسجيل أمر الفتح
+    app.add_handler(CommandHandler("lock_photos", lock_photos_command))     
+    app.add_handler(CommandHandler("unlock_photos", unlock_photos_command)) 
+    app.add_handler(CommandHandler("start_call", start_video_call)) # 🔥 تسجيل أمر البث كام
+    app.add_handler(CommandHandler("stop_call", stop_video_call))   # 🔥 تسجيل أمر إنهاء البث
     
     app.add_handler(ChatMemberHandler(on_chat_member_updated, ChatMemberHandler.CHAT_MEMBER))
-    
-    # رادار مراقبة الميديا والصور
     app.add_handler(MessageHandler(filters.PHOTO, photo_cleaner))
-    
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS | filters.StatusUpdate.LEFT_CHAT_MEMBER, protect_group))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_everything))
     
-    print("البوت شغال بكودك الأصلي.. وتم إضافة ميزة طلب أيدي الجروب بالخاص بنجاح!")
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    # استخدام فلتر شامل لالتقاط الفيديوهات المرفوعة بالخاص بجانب النصوص والروابط
+    app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_everything))
+    
+    await app.initialize()
+    await app.start()
+    print("البوت شغال وجاهز تماماً على سيرفر Railway!")
+    await app.updater.start_polling(allowed_updates=Update.ALL_TYPES)
+    while True: 
+        await asyncio.sleep(1)
 
 if __name__ == '__main__':
-    main()
+    asyncio.run(main_async())
