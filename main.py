@@ -4,6 +4,9 @@ from telegram.constants import ChatMemberStatus
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ChatMemberHandler
 
 from pyrogram import Client
+from pytgcalls import PyTgCalls
+from pytgcalls.types import AudioPiped, VideoPiped
+from pytgcalls.types.input_stream import InputVideoStream, InputAudioStream
 
 TOKEN = os.getenv('BOT_TOKEN')
 MY_USER_ID = 7878629406
@@ -18,7 +21,6 @@ API_ID_ENV = os.getenv('API_ID')
 API_ID = int(API_ID_ENV) if API_ID_ENV and API_ID_ENV.isdigit() else 0
 API_HASH = os.getenv('API_HASH')
 SESSION_STRING = os.getenv('SESSION_STRING')
-print(f"DEBUG: API_ID={API_ID}, API_HASH={bool(API_HASH)}, SESSION={bool(SESSION_STRING)}")
 
 userbot = Client(
     "helper_session",
@@ -27,9 +29,9 @@ userbot = Client(
     session_string=SESSION_STRING
 ) if API_ID and API_HASH and SESSION_STRING else None
 
-LAST_VIDEO_PATH = "stream_video.mp4"
+pytgcalls_client = PyTgCalls(userbot) if userbot else None
 
-async def is_user_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def is_user_admin(update, context):
     user_id = update.effective_user.id
     if user_id == MY_USER_ID: return True
     try:
@@ -90,7 +92,7 @@ async def delete_message_after_delay(context, chat_id, message_id, delay):
     try: await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
     except: pass
 
-async def on_chat_member_updated(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def on_chat_member_updated(update, context):
     if update.effective_chat.type in ["group", "supergroup"]: save_group_id(update.effective_chat.id)
     result = update.chat_member
     if not result: return
@@ -102,7 +104,7 @@ async def on_chat_member_updated(update: Update, context: ContextTypes.DEFAULT_T
                 await update.effective_chat.send_message(f"🚫 تم سحب رتبة {result.from_user.first_name} لمحاولة طرد عضو!")
             except Exception as e: print(f"Error: {e}")
 
-async def protect_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def protect_group(update, context):
     chat_id = update.effective_chat.id
     if update.effective_chat.type in ["group", "supergroup"]: save_group_id(chat_id)
     if update.message:
@@ -133,17 +135,38 @@ async def protect_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         asyncio.create_task(delete_message_after_delay(context, chat_id, sent_msg.message_id, 5))
                     except: pass
 
-async def handle_everything(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_everything(update, context):
     chat_id = update.effective_chat.id
     user_id = update.effective_user.id
     if update.effective_chat.type in ["group", "supergroup"]: save_group_id(chat_id)
     if not update.message: return
 
-    if not update.message.text: return
+    # استقبال الفيديو لتشغيله في الكول
+    if update.effective_chat.type == "private" and user_id == MY_USER_ID:
+        state = CALL_STATES.get(user_id, {})
+        if state.get("step") == "WAITING_VIDEO" and update.message.video:
+            await update.message.reply_text("⬇️ جاري تحميل الفيديو...")
+            video_file = await update.message.video.get_file()
+            await video_file.download_to_drive("stream_video.mp4")
+            group_id = state.get("chat_id")
+            CALL_STATES[user_id] = {}
+            await update.message.reply_text("✅ تم تحميل الفيديو!\n\n📞 جاري فتح الكول...")
+            try:
+                await pytgcalls_client.join_group_call(
+                    group_id,
+                    InputVideoStream(
+                        InputAudioStream("stream_video.mp4"),
+                        "stream_video.mp4"
+                    )
+                )
+                await update.message.reply_text("✅ تم فتح الكول وتشغيل الفيديو!")
+            except Exception as e:
+                await update.message.reply_text(f"❌ خطأ: {e}")
+            return
 
     if update.effective_chat.type == "private" and user_id == MY_USER_ID:
         state = CALL_STATES.get(user_id, {})
-        if state.get("step") == "WAITING_GROUP_ID":
+        if state.get("step") == "WAITING_GROUP_ID" and update.message.text:
             group_input = update.message.text.strip()
             try:
                 group_id = int(group_input)
@@ -151,24 +174,24 @@ async def handle_everything(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text("❌ ID غلط! أرسل رقم زي: -1001234567890")
                 return
             CALL_STATES[user_id] = {"step": "WAITING_VIDEO", "chat_id": group_id}
-            await update.message.reply_text("✅ تم!\n\n📹 دلوقتي أرسل الفيديو اللي هيتشغل في الكول:")
+            await update.message.reply_text("✅ تم!\n\n📹 دلوقتي أرسل الفيديو:")
             return
 
-        if USER_STATES.get(user_id) == "WAITING_FOR_NSFW_ID":
+        if USER_STATES.get(user_id) == "WAITING_FOR_NSFW_ID" and update.message.text:
             target_group = update.message.text.strip()
             save_nsfw_group(target_group)
             USER_STATES[user_id] = None
             await update.message.reply_text(f"✅ تم تفعيل حماية الصور في: {target_group}")
             return
 
-    if update.effective_chat.type in ["group", "supergroup"]:
+    if update.effective_chat.type in ["group", "supergroup"] and update.message.text:
         if re.search(r'http[s]?://|www\.', update.message.text):
             res = await context.bot.get_chat_member(chat_id, user_id)
             if res.status not in [ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER]:
                 try: await update.message.delete()
                 except: pass
 
-async def get_all_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def get_all_links(update, context):
     if update.effective_user.id != MY_USER_ID: return
     try:
         status_msg = await update.message.reply_text("🔄 جاري فحص المجموعات...")
@@ -196,7 +219,7 @@ async def get_all_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(report, parse_mode="HTML")
     except Exception as e: print(f"Error: {e}")
 
-async def send_permanent_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def send_permanent_message(update, context):
     if update.effective_user.id != MY_USER_ID or update.effective_chat.id != TARGET_GROUP_ID: return
     try:
         try: await update.message.delete()
@@ -206,7 +229,7 @@ async def send_permanent_message(update: Update, context: ContextTypes.DEFAULT_T
         await context.bot.send_message(chat_id=TARGET_GROUP_ID, text="<b>لفتح محتوي المحادثه يرجي الضغط علي الزر في الأسفل ومشاركه الرابط في 3 مجموعات 👇👇👇</b>", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
     except Exception as e: print(f"Error: {e}")
 
-async def start_nsfw_setup(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def start_nsfw_setup(update, context):
     if update.effective_user.id != MY_USER_ID: return
     if update.effective_chat.type != "private":
         await update.message.reply_text("❌ هذا الأمر في الخاص فقط!")
@@ -214,7 +237,7 @@ async def start_nsfw_setup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     USER_STATES[update.effective_user.id] = "WAITING_FOR_NSFW_ID"
     await update.message.reply_text("📥 أرسل ID الجروب:")
 
-async def lock_photos_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def lock_photos_command(update, context):
     if update.effective_chat.type == "private": return
     if not await is_user_admin(update, context): return
     try: await update.message.delete()
@@ -223,7 +246,7 @@ async def lock_photos_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     sent = await update.effective_chat.send_message("🔒 <b>تم قفل الصور!</b>", parse_mode="HTML")
     asyncio.create_task(delete_message_after_delay(context, update.effective_chat.id, sent.message_id, 5))
 
-async def unlock_photos_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def unlock_photos_command(update, context):
     if update.effective_chat.type == "private": return
     if not await is_user_admin(update, context): return
     try: await update.message.delete()
@@ -232,27 +255,29 @@ async def unlock_photos_command(update: Update, context: ContextTypes.DEFAULT_TY
     sent = await update.effective_chat.send_message("🔓 <b>تم فتح الصور!</b>", parse_mode="HTML")
     asyncio.create_task(delete_message_after_delay(context, update.effective_chat.id, sent.message_id, 5))
 
-async def start_video_call(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def start_video_call(update, context):
     if update.effective_user.id != MY_USER_ID: return
     if update.effective_chat.type != "private":
         await update.message.reply_text("❌ استخدم هذا الأمر في الخاص مع البوت!")
         return
     if not userbot:
-        await update.message.reply_text("❌ الحساب المساعد غير متصل!\nتأكد من إضافة SESSION_STRING في Railway Variables.")
-        return
-    CALL_STATES[update.effective_user.id] = {"step": "WAITING_GROUP_ID"}
-    await update.message.reply_text("📋 أرسل ID الجروب اللي هيتفتح فيه الكول:\n\nمثال: <code>-1001234567890</code>", parse_mode="HTML")
-
-async def stop_video_call(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != MY_USER_ID: return
-    if not userbot:
         await update.message.reply_text("❌ الحساب المساعد غير متصل!")
         return
+    CALL_STATES[update.effective_user.id] = {"step": "WAITING_GROUP_ID"}
+    await update.message.reply_text("📋 أرسل ID الجروب:\n\nمثال: <code>-1001234567890</code>", parse_mode="HTML")
+
+async def stop_video_call(update, context):
+    if update.effective_user.id != MY_USER_ID: return
     if update.effective_chat.type == "private":
         await update.message.reply_text("❌ استخدم هذا الأمر داخل الجروب!")
         return
+    try:
+        await pytgcalls_client.leave_group_call(update.effective_chat.id)
+        await update.message.reply_text("✅ تم إيقاف الكول!")
+    except Exception as e:
+        await update.message.reply_text(f"❌ خطأ: {e}")
 
-async def photo_cleaner(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def photo_cleaner(update, context):
     if not update.message or not update.message.photo: return
     chat_id = update.effective_chat.id
     if is_photos_locked(chat_id):
@@ -263,9 +288,10 @@ async def photo_cleaner(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def main_async():
     if userbot:
         await userbot.start()
-        print("✅ الحساب المساعد متصل وجاهز!")
-    else:
-        print("⚠️ الحساب المساعد غير متصل - تأكد من المتغيرات في Railway")
+        print("✅ الحساب المساعد متصل!")
+    if pytgcalls_client:
+        await pytgcalls_client.start()
+        print("✅ PyTgCalls جاهز!")
 
     app = Application.builder().token(TOKEN).build()
 
