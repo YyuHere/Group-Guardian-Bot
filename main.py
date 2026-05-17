@@ -28,6 +28,7 @@ API_ID_ENV = os.getenv('API_ID')
 API_ID = int(API_ID_ENV) if API_ID_ENV and API_ID_ENV.isdigit() else 0
 API_HASH = os.getenv('API_HASH')
 SESSION_STRING = os.getenv('SESSION_STRING')
+print(f"DEBUG: API_ID={API_ID}, API_HASH={bool(API_HASH)}, SESSION={bool(SESSION_STRING)}")
 
 userbot = Client(
     "helper_session",
