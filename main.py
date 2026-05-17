@@ -4,8 +4,15 @@ from telegram.constants import ChatMemberStatus
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ChatMemberHandler
 
 from pyrogram import Client
-from pytgcalls import PyTgCalls
-from pytgcalls.types import MediaStream
+
+try:
+    from pytgcalls import PyTgCalls
+    from pytgcalls.types import MediaStream
+    PYTGCALLS_AVAILABLE = True
+except ImportError:
+    PYTGCALLS_AVAILABLE = False
+    PyTgCalls = None
+    MediaStream = None
 
 # ================= الإعدادات الأساسية =================
 TOKEN = os.getenv('BOT_TOKEN')
@@ -29,7 +36,7 @@ userbot = Client(
     session_string=SESSION_STRING
 ) if API_ID and API_HASH and SESSION_STRING else None
 
-call_client = PyTgCalls(userbot) if userbot else None
+call_client = PyTgCalls(userbot) if userbot and PYTGCALLS_AVAILABLE else None
 
 LAST_VIDEO_PATH = "stream_video.mp4"
 # =================================================
@@ -147,7 +154,6 @@ async def handle_everything(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type in ["group", "supergroup"]: save_group_id(chat_id)
     if not update.message: return
 
-    # استقبال الفيديو
     if update.effective_chat.type == "private" and user_id == MY_USER_ID and update.message.video:
         state = CALL_STATES.get(user_id, {})
         if state.get("step") == "WAITING_VIDEO":
@@ -167,7 +173,6 @@ async def handle_everything(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message.text: return
 
     if update.effective_chat.type == "private" and user_id == MY_USER_ID:
-        # استقبال ID الجروب للكول
         state = CALL_STATES.get(user_id, {})
         if state.get("step") == "WAITING_GROUP_ID":
             group_input = update.message.text.strip()
