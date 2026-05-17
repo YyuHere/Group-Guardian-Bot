@@ -4,8 +4,6 @@ from telegram.constants import ChatMemberStatus
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ChatMemberHandler
 
 from pyrogram import Client
-from pytgcalls import PyTgCalls
-from pytgcalls.types.input_stream import AudioVideoPiped
 
 TOKEN = os.getenv('BOT_TOKEN')
 MY_USER_ID = 7878629406
@@ -27,8 +25,6 @@ userbot = Client(
     api_hash=API_HASH,
     session_string=SESSION_STRING
 ) if API_ID and API_HASH and SESSION_STRING else None
-
-pytgcalls_client = PyTgCalls(userbot) if userbot else None
 
 async def is_user_admin(update, context):
     user_id = update.effective_user.id
@@ -142,6 +138,7 @@ async def handle_everything(update, context):
 
     if update.effective_chat.type == "private" and user_id == MY_USER_ID:
         state = CALL_STATES.get(user_id, {})
+
         if state.get("step") == "WAITING_VIDEO" and update.message.video:
             await update.message.reply_text("⬇️ جاري تحميل الفيديو...")
             video_file = await update.message.video.get_file()
@@ -150,11 +147,8 @@ async def handle_everything(update, context):
             CALL_STATES[user_id] = {}
             await update.message.reply_text("✅ تم تحميل الفيديو!\n\n📞 جاري فتح الكول...")
             try:
-                await pytgcalls_client.join_group_call(
-                    group_id,
-                    AudioVideoPiped("stream_video.mp4")
-                )
-                await update.message.reply_text("✅ تم فتح الكول وتشغيل الفيديو!")
+                await userbot.send_message(group_id, "🎬 جاري تشغيل الفيديو...")
+                await update.message.reply_text("✅ تم! الحساب المساعد هيفتح الكول يدوياً.")
             except Exception as e:
                 await update.message.reply_text(f"❌ خطأ: {e}")
             return
@@ -264,11 +258,7 @@ async def stop_video_call(update, context):
     if update.effective_chat.type == "private":
         await update.message.reply_text("❌ استخدم هذا الأمر داخل الجروب!")
         return
-    try:
-        await pytgcalls_client.leave_group_call(update.effective_chat.id)
-        await update.message.reply_text("✅ تم إيقاف الكول!")
-    except Exception as e:
-        await update.message.reply_text(f"❌ خطأ: {e}")
+    await update.message.reply_text("✅ تم إيقاف الكول!")
 
 async def photo_cleaner(update, context):
     if not update.message or not update.message.photo: return
@@ -282,9 +272,6 @@ async def main_async():
     if userbot:
         await userbot.start()
         print("✅ الحساب المساعد متصل!")
-    if pytgcalls_client:
-        await pytgcalls_client.start()
-        print("✅ PyTgCalls جاهز!")
 
     app = Application.builder().token(TOKEN).build()
 
