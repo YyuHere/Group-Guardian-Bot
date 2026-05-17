@@ -1,4 +1,4 @@
 python-telegram-bot
 pyrogram==2.0.106
-pytgcalls
+pytgcalls==1.1.5
 TgCrypto
