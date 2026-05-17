@@ -4,7 +4,6 @@ from telegram.constants import ChatMemberStatus
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ChatMemberHandler
 
 from pyrogram import Client
-from tgcalls import TgCalls
 
 TOKEN = os.getenv('BOT_TOKEN')
 MY_USER_ID = 7878629406
@@ -26,8 +25,6 @@ userbot = Client(
     api_hash=API_HASH,
     session_string=SESSION_STRING
 ) if API_ID and API_HASH and SESSION_STRING else None
-
-tgcalls_client = TgCalls(userbot) if userbot else None
 
 async def is_user_admin(update, context):
     user_id = update.effective_user.id
@@ -142,23 +139,6 @@ async def handle_everything(update, context):
     if update.effective_chat.type == "private" and user_id == MY_USER_ID:
         state = CALL_STATES.get(user_id, {})
 
-        if state.get("step") == "WAITING_VIDEO" and update.message.video:
-            await update.message.reply_text("⬇️ جاري تحميل الفيديو...")
-            video_file = await update.message.video.get_file()
-            await video_file.download_to_drive("stream_video.mp4")
-            group_id = state.get("chat_id")
-            CALL_STATES[user_id] = {}
-            await update.message.reply_text("✅ تم تحميل الفيديو!\n\n📞 جاري فتح الكول...")
-            try:
-                await tgcalls_client.join_group_call(
-                    group_id,
-                    "stream_video.mp4"
-                )
-                await update.message.reply_text("✅ تم فتح الكول وتشغيل الفيديو!")
-            except Exception as e:
-                await update.message.reply_text(f"❌ خطأ: {e}")
-            return
-
         if state.get("step") == "WAITING_GROUP_ID" and update.message.text:
             group_input = update.message.text.strip()
             try:
@@ -248,28 +228,6 @@ async def unlock_photos_command(update, context):
     sent = await update.effective_chat.send_message("🔓 <b>تم فتح الصور!</b>", parse_mode="HTML")
     asyncio.create_task(delete_message_after_delay(context, update.effective_chat.id, sent.message_id, 5))
 
-async def start_video_call(update, context):
-    if update.effective_user.id != MY_USER_ID: return
-    if update.effective_chat.type != "private":
-        await update.message.reply_text("❌ استخدم هذا الأمر في الخاص مع البوت!")
-        return
-    if not userbot:
-        await update.message.reply_text("❌ الحساب المساعد غير متصل!")
-        return
-    CALL_STATES[update.effective_user.id] = {"step": "WAITING_GROUP_ID"}
-    await update.message.reply_text("📋 أرسل ID الجروب:\n\nمثال: <code>-1001234567890</code>", parse_mode="HTML")
-
-async def stop_video_call(update, context):
-    if update.effective_user.id != MY_USER_ID: return
-    if update.effective_chat.type == "private":
-        await update.message.reply_text("❌ استخدم هذا الأمر داخل الجروب!")
-        return
-    try:
-        await tgcalls_client.leave_group_call(update.effective_chat.id)
-        await update.message.reply_text("✅ تم إيقاف الكول!")
-    except Exception as e:
-        await update.message.reply_text(f"❌ خطأ: {e}")
-
 async def photo_cleaner(update, context):
     if not update.message or not update.message.photo: return
     chat_id = update.effective_chat.id
@@ -282,9 +240,6 @@ async def main_async():
     if userbot:
         await userbot.start()
         print("✅ الحساب المساعد متصل!")
-    if tgcalls_client:
-        await tgcalls_client.start()
-        print("✅ TgCalls جاهز!")
 
     app = Application.builder().token(TOKEN).build()
 
@@ -293,8 +248,6 @@ async def main_async():
     app.add_handler(CommandHandler("protect_nsfw", start_nsfw_setup))
     app.add_handler(CommandHandler("lock_photos", lock_photos_command))
     app.add_handler(CommandHandler("unlock_photos", unlock_photos_command))
-    app.add_handler(CommandHandler("start_call", start_video_call))
-    app.add_handler(CommandHandler("stop_call", stop_video_call))
 
     app.add_handler(ChatMemberHandler(on_chat_member_updated, ChatMemberHandler.CHAT_MEMBER))
     app.add_handler(MessageHandler(filters.PHOTO, photo_cleaner))
