@@ -5,8 +5,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 
 from pyrogram import Client
 from pytgcalls import PyTgCalls
-from pytgcalls.types import AudioPiped, VideoPiped
-from pytgcalls.types.input_stream import InputVideoStream, InputAudioStream
+from pytgcalls.types.input_stream import AudioVideoPiped
 
 TOKEN = os.getenv('BOT_TOKEN')
 MY_USER_ID = 7878629406
@@ -141,7 +140,6 @@ async def handle_everything(update, context):
     if update.effective_chat.type in ["group", "supergroup"]: save_group_id(chat_id)
     if not update.message: return
 
-    # استقبال الفيديو لتشغيله في الكول
     if update.effective_chat.type == "private" and user_id == MY_USER_ID:
         state = CALL_STATES.get(user_id, {})
         if state.get("step") == "WAITING_VIDEO" and update.message.video:
@@ -154,18 +152,13 @@ async def handle_everything(update, context):
             try:
                 await pytgcalls_client.join_group_call(
                     group_id,
-                    InputVideoStream(
-                        InputAudioStream("stream_video.mp4"),
-                        "stream_video.mp4"
-                    )
+                    AudioVideoPiped("stream_video.mp4")
                 )
                 await update.message.reply_text("✅ تم فتح الكول وتشغيل الفيديو!")
             except Exception as e:
                 await update.message.reply_text(f"❌ خطأ: {e}")
             return
 
-    if update.effective_chat.type == "private" and user_id == MY_USER_ID:
-        state = CALL_STATES.get(user_id, {})
         if state.get("step") == "WAITING_GROUP_ID" and update.message.text:
             group_input = update.message.text.strip()
             try:
