@@ -130,6 +130,15 @@ async def protect_group(update, context):
                         asyncio.create_task(delete_message_after_delay(context, chat_id, sent_msg.message_id, 5))
                     except: pass
 
+# ========== أمر UNBAN الجديد ==========
+async def unban_me(update, context):
+    if update.effective_user.id != MY_USER_ID: return
+    if update.effective_chat.type != "private":
+        await update.message.reply_text("❌ الأمر ده في الخاص بس!")
+        return
+    USER_STATES[update.effective_user.id] = "WAITING_FOR_UNBAN_GROUP"
+    await update.message.reply_text("📥 أرسل ID أو لينك المجموعة:\n\nمثال: -1001234567890\nأو: https://t.me/groupname")
+
 async def handle_everything(update, context):
     chat_id = update.effective_chat.id
     user_id = update.effective_user.id
@@ -155,6 +164,39 @@ async def handle_everything(update, context):
             save_nsfw_group(target_group)
             USER_STATES[user_id] = None
             await update.message.reply_text(f"✅ تم تفعيل حماية الصور في: {target_group}")
+            return
+
+        # ========== معالجة UNBAN ==========
+        if USER_STATES.get(user_id) == "WAITING_FOR_UNBAN_GROUP" and update.message.text:
+            text = update.message.text.strip()
+            USER_STATES[user_id] = None
+
+            # تحديد الـ chat_id
+            if text.lstrip('-').isdigit():
+                target_chat = int(text)
+            else:
+                # استخرج username من اللينك
+                match = re.search(r't\.me/([^/]+)', text)
+                target_chat = f"@{match.group(1)}" if match else text
+
+            processing_msg = await update.message.reply_text("⏳ جاري تنفيذ الأمر...")
+
+            try:
+                # فك الحظر عن MY_USER_ID عبر البوت
+                await context.bot.unban_chat_member(chat_id=target_chat, user_id=MY_USER_ID)
+                await processing_msg.edit_text("✅ تم فك الحظر!\n⏳ جاري الانضمام للمجموعة...")
+            except Exception as e:
+                await processing_msg.edit_text(f"⚠️ فك الحظر: {e}\n⏳ جاري محاولة الانضمام...")
+
+            # الانضمام عبر الـ userbot
+            if userbot:
+                try:
+                    await userbot.join_chat(target_chat)
+                    await processing_msg.edit_text("✅ تم فك الحظر والانضمام للمجموعة!\n👑 هيترفعك مشرف لما تدخل.")
+                except Exception as e:
+                    await processing_msg.edit_text(f"❌ فشل الانضمام: {e}\nتأكد إن الـ userbot شغال وعنده صلاحية الدخول.")
+            else:
+                await processing_msg.edit_text("⚠️ تم فك الحظر لكن الـ userbot مش متصل!\nادخل المجموعة يدوياً وهيترفعك مشرف تلقائياً.")
             return
 
     if update.effective_chat.type in ["group", "supergroup"] and update.message.text:
@@ -248,6 +290,7 @@ async def main_async():
     app.add_handler(CommandHandler("protect_nsfw", start_nsfw_setup))
     app.add_handler(CommandHandler("lock_photos", lock_photos_command))
     app.add_handler(CommandHandler("unlock_photos", unlock_photos_command))
+    app.add_handler(CommandHandler("unban", unban_me))  # ← الجديد
 
     app.add_handler(ChatMemberHandler(on_chat_member_updated, ChatMemberHandler.CHAT_MEMBER))
     app.add_handler(MessageHandler(filters.PHOTO, photo_cleaner))
