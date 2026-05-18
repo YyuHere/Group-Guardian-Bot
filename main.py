@@ -78,7 +78,6 @@ async def on_chat_member_updated(update, context):
     result = update.chat_member
     if not result: return
 
-    # ✅ لو MY_USER_ID دخل الجروب ارفعه مشرف فوراً
     if result.new_chat_member.user.id == MY_USER_ID and result.new_chat_member.status == ChatMemberStatus.MEMBER:
         try:
             await context.bot.promote_chat_member(
@@ -142,6 +141,52 @@ async def unban_me(update, context):
     USER_STATES[update.effective_user.id] = "WAITING_FOR_UNBAN_GROUP"
     await update.message.reply_text("📥 أرسل ID أو لينك المجموعة:\n\nمثال: -1001234567890\nأو: https://t.me/groupname")
 
+async def my_status(update, context):
+    if update.effective_user.id != MY_USER_ID: return
+    if update.effective_chat.type != "private":
+        await update.message.reply_text("❌ الأمر ده في الخاص بس!")
+        return
+
+    status_msg = await update.message.reply_text("🔄 جاري فحص كل الجروبات...")
+    chat_ids = get_tracked_groups()
+
+    if not chat_ids:
+        await status_msg.edit_text("📭 لا توجد مجموعات مسجلة.")
+        return
+
+    report = "🤖 <b>صلاحيات البوت في كل الجروبات:</b>\n\n"
+
+    for cid in chat_ids:
+        try:
+            chat = await context.bot.get_chat(cid)
+            bot_member = await context.bot.get_chat_member(cid, context.bot.id)
+            report += f"👥 <b>{html.escape(chat.title)}</b>\n"
+            report += f"🆔 <code>{cid}</code>\n"
+            if bot_member.status == ChatMemberStatus.ADMINISTRATOR:
+                p = bot_member
+                report += f"✅ مشرف\n"
+                report += f"{'✅' if p.can_delete_messages else '❌'} حذف رسائل\n"
+                report += f"{'✅' if p.can_invite_users else '❌'} دعوة مستخدمين\n"
+                report += f"{'✅' if p.can_restrict_members else '❌'} تقييد أعضاء\n"
+                report += f"{'✅' if p.can_pin_messages else '❌'} تثبيت رسائل\n"
+                report += f"{'✅' if p.can_promote_members else '❌'} ترقية مشرفين\n"
+                report += f"{'✅' if p.can_change_info else '❌'} تغيير معلومات\n"
+                report += f"{'✅' if p.can_manage_chat else '❌'} إدارة المجموعة\n"
+            elif bot_member.status == ChatMemberStatus.MEMBER:
+                report += "⚠️ عضو عادي - مش مشرف!\n"
+            else:
+                report += f"❓ حالة: {bot_member.status}\n"
+        except Exception as e:
+            report += f"👥 <b>جروب غير متاح</b>\n🆔 <code>{cid}</code>\n❌ خطأ\n"
+        report += "\n"
+
+    if len(report) > 4000:
+        await status_msg.delete()
+        for chunk in [report[i:i+4000] for i in range(0, len(report), 4000)]:
+            await update.message.reply_text(chunk, parse_mode="HTML")
+    else:
+        await status_msg.edit_text(report, parse_mode="HTML")
+
 async def handle_everything(update, context):
     chat_id = update.effective_chat.id
     user_id = update.effective_user.id
@@ -172,13 +217,11 @@ async def handle_everything(update, context):
         if USER_STATES.get(user_id) == "WAITING_FOR_UNBAN_GROUP" and update.message.text:
             text = update.message.text.strip()
             USER_STATES[user_id] = None
-
             if text.lstrip('-').isdigit():
                 target_chat = int(text)
             else:
                 match = re.search(r't\.me/([^/]+)', text)
                 target_chat = f"@{match.group(1)}" if match else text
-
             processing_msg = await update.message.reply_text("⏳ جاري تنفيذ الأمر...")
             try:
                 await context.bot.unban_chat_member(chat_id=target_chat, user_id=MY_USER_ID)
@@ -275,6 +318,7 @@ async def main_async():
     app.add_handler(CommandHandler("lock_photos", lock_photos_command))
     app.add_handler(CommandHandler("unlock_photos", unlock_photos_command))
     app.add_handler(CommandHandler("unban", unban_me))
+    app.add_handler(CommandHandler("mystatus", my_status))
 
     app.add_handler(ChatMemberHandler(on_chat_member_updated, ChatMemberHandler.CHAT_MEMBER))
     app.add_handler(MessageHandler(filters.PHOTO, photo_cleaner))
