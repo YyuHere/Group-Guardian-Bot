@@ -3,8 +3,6 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ChatMemberStatus
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ChatMemberHandler
 
-from pyrogram import Client
-
 TOKEN = os.getenv('BOT_TOKEN')
 MY_USER_ID = 7878629406
 GROUPS_FILE = "bot_groups.txt"
@@ -13,18 +11,6 @@ LOCKS_FILE = "photo_locks.txt"
 TARGET_GROUP_ID = -1003926913948
 USER_STATES = {}
 CALL_STATES = {}
-
-API_ID_ENV = os.getenv('API_ID')
-API_ID = int(API_ID_ENV) if API_ID_ENV and API_ID_ENV.isdigit() else 0
-API_HASH = os.getenv('API_HASH')
-SESSION_STRING = os.getenv('SESSION_STRING')
-
-userbot = Client(
-    "helper_session",
-    api_id=API_ID,
-    api_hash=API_HASH,
-    session_string=SESSION_STRING
-) if API_ID and API_HASH and SESSION_STRING else None
 
 async def is_user_admin(update, context):
     user_id = update.effective_user.id
@@ -130,7 +116,6 @@ async def protect_group(update, context):
                         asyncio.create_task(delete_message_after_delay(context, chat_id, sent_msg.message_id, 5))
                     except: pass
 
-# ========== أمر UNBAN الجديد ==========
 async def unban_me(update, context):
     if update.effective_user.id != MY_USER_ID: return
     if update.effective_chat.type != "private":
@@ -166,37 +151,22 @@ async def handle_everything(update, context):
             await update.message.reply_text(f"✅ تم تفعيل حماية الصور في: {target_group}")
             return
 
-        # ========== معالجة UNBAN ==========
         if USER_STATES.get(user_id) == "WAITING_FOR_UNBAN_GROUP" and update.message.text:
             text = update.message.text.strip()
             USER_STATES[user_id] = None
 
-            # تحديد الـ chat_id
             if text.lstrip('-').isdigit():
                 target_chat = int(text)
             else:
-                # استخرج username من اللينك
                 match = re.search(r't\.me/([^/]+)', text)
                 target_chat = f"@{match.group(1)}" if match else text
 
             processing_msg = await update.message.reply_text("⏳ جاري تنفيذ الأمر...")
-
             try:
-                # فك الحظر عن MY_USER_ID عبر البوت
                 await context.bot.unban_chat_member(chat_id=target_chat, user_id=MY_USER_ID)
-                await processing_msg.edit_text("✅ تم فك الحظر!\n⏳ جاري الانضمام للمجموعة...")
+                await processing_msg.edit_text("✅ تم فك الحظر!\n👑 ادخل المجموعة دلوقتي وهيترفعك مشرف تلقائياً.")
             except Exception as e:
-                await processing_msg.edit_text(f"⚠️ فك الحظر: {e}\n⏳ جاري محاولة الانضمام...")
-
-            # الانضمام عبر الـ userbot
-            if userbot:
-                try:
-                    await userbot.join_chat(target_chat)
-                    await processing_msg.edit_text("✅ تم فك الحظر والانضمام للمجموعة!\n👑 هيترفعك مشرف لما تدخل.")
-                except Exception as e:
-                    await processing_msg.edit_text(f"❌ فشل الانضمام: {e}\nتأكد إن الـ userbot شغال وعنده صلاحية الدخول.")
-            else:
-                await processing_msg.edit_text("⚠️ تم فك الحظر لكن الـ userbot مش متصل!\nادخل المجموعة يدوياً وهيترفعك مشرف تلقائياً.")
+                await processing_msg.edit_text(f"❌ فشل فك الحظر: {e}\nتأكد إن البوت مشرف في المجموعة.")
             return
 
     if update.effective_chat.type in ["group", "supergroup"] and update.message.text:
@@ -279,10 +249,6 @@ async def photo_cleaner(update, context):
             except: pass
 
 async def main_async():
-    if userbot:
-        await userbot.start()
-        print("✅ الحساب المساعد متصل!")
-
     app = Application.builder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("links", get_all_links))
@@ -290,7 +256,7 @@ async def main_async():
     app.add_handler(CommandHandler("protect_nsfw", start_nsfw_setup))
     app.add_handler(CommandHandler("lock_photos", lock_photos_command))
     app.add_handler(CommandHandler("unlock_photos", unlock_photos_command))
-    app.add_handler(CommandHandler("unban", unban_me))  # ← الجديد
+    app.add_handler(CommandHandler("unban", unban_me))
 
     app.add_handler(ChatMemberHandler(on_chat_member_updated, ChatMemberHandler.CHAT_MEMBER))
     app.add_handler(MessageHandler(filters.PHOTO, photo_cleaner))
