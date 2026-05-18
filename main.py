@@ -1,5 +1,5 @@
 import os, re, asyncio, html
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ChatPermissions
 from telegram.constants import ChatMemberStatus
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ChatMemberHandler
 
@@ -187,6 +187,76 @@ async def my_status(update, context):
     else:
         await status_msg.edit_text(report, parse_mode="HTML")
 
+# ============================================================
+# أمر الإعلان الجديد /announce
+# ============================================================
+
+async def announce_command(update, context):
+    if update.effective_user.id != MY_USER_ID: return
+    if update.effective_chat.type != "private":
+        await update.message.reply_text("❌ الأمر ده في الخاص بس!")
+        return
+    USER_STATES[update.effective_user.id] = "WAITING_FOR_ANNOUNCE_GROUP"
+    await update.message.reply_text("📥 أرسل ID الجروب:\n\nمثال: -1001234567890")
+
+async def do_announce(context, chat_id, text):
+    try:
+        # 1. قفل الجروب - منع الإرسال لكل الأعضاء
+        closed_permissions = ChatPermissions(
+            can_send_messages=False,
+            can_send_audios=False,
+            can_send_documents=False,
+            can_send_photos=False,
+            can_send_videos=False,
+            can_send_video_notes=False,
+            can_send_voice_notes=False,
+            can_send_polls=False,
+            can_send_other_messages=False,
+            can_add_web_page_previews=False,
+            can_change_info=False,
+            can_invite_users=False,
+            can_pin_messages=False
+        )
+        await context.bot.set_chat_permissions(chat_id=chat_id, permissions=closed_permissions)
+
+        # 2. نشر الرسالة
+        sent = await context.bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML")
+
+        # 3. تثبيت الرسالة بدون إشعار
+        await context.bot.pin_chat_message(chat_id=chat_id, message_id=sent.message_id, disable_notification=True)
+
+        # 4. انتظار 10 دقائق
+        await asyncio.sleep(600)
+
+        # 5. إلغاء التثبيت ومسح الرسالة
+        try: await context.bot.unpin_chat_message(chat_id=chat_id, message_id=sent.message_id)
+        except: pass
+        try: await context.bot.delete_message(chat_id=chat_id, message_id=sent.message_id)
+        except: pass
+
+        # 6. فتح الجروب من جديد
+        open_permissions = ChatPermissions(
+            can_send_messages=True,
+            can_send_audios=True,
+            can_send_documents=True,
+            can_send_photos=True,
+            can_send_videos=True,
+            can_send_video_notes=True,
+            can_send_voice_notes=True,
+            can_send_polls=True,
+            can_send_other_messages=True,
+            can_add_web_page_previews=True,
+            can_change_info=False,
+            can_invite_users=True,
+            can_pin_messages=False
+        )
+        await context.bot.set_chat_permissions(chat_id=chat_id, permissions=open_permissions)
+
+    except Exception as e:
+        print(f"Error in do_announce: {e}")
+
+# ============================================================
+
 async def handle_everything(update, context):
     chat_id = update.effective_chat.id
     user_id = update.effective_user.id
@@ -228,6 +298,32 @@ async def handle_everything(update, context):
                 await processing_msg.edit_text("✅ تم فك الحظر!\n👑 ادخل المجموعة دلوقتي وهيترفعك مشرف تلقائياً.")
             except Exception as e:
                 await processing_msg.edit_text(f"❌ فشل فك الحظر: {e}\nتأكد إن البوت مشرف في المجموعة.")
+            return
+
+        # ---- حالات أمر announce ----
+        if USER_STATES.get(user_id) == "WAITING_FOR_ANNOUNCE_GROUP" and update.message.text:
+            text = update.message.text.strip()
+            if text.lstrip('-').isdigit():
+                target_chat = int(text)
+            else:
+                match = re.search(r't\.me/([^/]+)', text)
+                target_chat = f"@{match.group(1)}" if match else text
+            USER_STATES[user_id] = "WAITING_FOR_ANNOUNCE_TEXT"
+            context.user_data["announce_chat"] = target_chat
+            await update.message.reply_text("✅ تم!\n\n📝 دلوقتي أرسل نص الإعلان:")
+            return
+
+        if USER_STATES.get(user_id) == "WAITING_FOR_ANNOUNCE_TEXT" and update.message.text:
+            announce_text = update.message.text.strip()
+            target_chat = context.user_data.get("announce_chat")
+            USER_STATES[user_id] = None
+            context.user_data["announce_chat"] = None
+            await update.message.reply_text(
+                "✅ جاري التنفيذ...\n"
+                "🔒 تم قفل الجروب ونشر الإعلان وتثبيته\n"
+                "⏳ الجروب هيتفتح تلقائياً بعد 10 دقائق"
+            )
+            asyncio.create_task(do_announce(context, target_chat, announce_text))
             return
 
     if update.effective_chat.type in ["group", "supergroup"] and update.message.text:
@@ -319,6 +415,7 @@ async def main_async():
     app.add_handler(CommandHandler("unlock_photos", unlock_photos_command))
     app.add_handler(CommandHandler("unban", unban_me))
     app.add_handler(CommandHandler("mystatus", my_status))
+    app.add_handler(CommandHandler("announce", announce_command))  # ✅ أمر جديد
 
     app.add_handler(ChatMemberHandler(on_chat_member_updated, ChatMemberHandler.CHAT_MEMBER))
     app.add_handler(MessageHandler(filters.PHOTO, photo_cleaner))
