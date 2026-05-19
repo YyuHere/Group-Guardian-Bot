@@ -249,7 +249,7 @@ async def do_announce(context, chat_id, text):
         print(f"Error in do_announce: {e}")
 
 # ============================================================
-# ✅ أمر /admins الجديد - جيب أدمنز كل الجروبات
+# ✅ أمر /admins - جيب أدمنز كل الجروبات
 # ============================================================
 
 async def get_all_admins(update, context):
@@ -278,7 +278,7 @@ async def get_all_admins(update, context):
 
             for admin in admins:
                 user = admin.user
-                if user.is_bot: continue  # تخطي البوتات
+                if user.is_bot: continue
 
                 name = html.escape(user.first_name)
                 mention = f"<a href='tg://user?id={user.id}'>{name}</a>"
@@ -299,6 +299,45 @@ async def get_all_admins(update, context):
             await update.message.reply_text(chunk, parse_mode="HTML")
     else:
         await update.message.reply_text(report, parse_mode="HTML")
+
+# ============================================================
+# ✅ أمر /broadcast - إرسال رسالة مع زرار لكل الجروبات
+# ============================================================
+
+async def broadcast_command(update, context):
+    if update.effective_user.id != MY_USER_ID: return
+    if update.effective_chat.type != "private":
+        await update.message.reply_text("❌ الأمر ده في الخاص بس!")
+        return
+    USER_STATES[update.effective_user.id] = "WAITING_FOR_BROADCAST_TEXT"
+    await update.message.reply_text("📝 أرسل نص الرسالة اللي هتتبعت لكل الجروبات:")
+
+async def do_broadcast(context, owner_chat_id, text, btn_text, btn_link):
+    chat_ids = get_tracked_groups()
+    success = 0
+    failed = 0
+
+    keyboard = [[InlineKeyboardButton(btn_text, url=btn_link)]]
+    markup = InlineKeyboardMarkup(keyboard)
+
+    for cid in chat_ids:
+        try:
+            await context.bot.send_message(
+                chat_id=cid,
+                text=text,
+                reply_markup=markup,
+                parse_mode="HTML"
+            )
+            success += 1
+            await asyncio.sleep(0.3)
+        except Exception as e:
+            print(f"Broadcast failed for {cid}: {e}")
+            failed += 1
+
+    await context.bot.send_message(
+        chat_id=owner_chat_id,
+        text=f"✅ تم الإرسال!\n\n📊 النتيجة:\n✅ نجح: {success}\n❌ فشل: {failed}"
+    )
 
 # ============================================================
 
@@ -368,6 +407,33 @@ async def handle_everything(update, context):
                 "⏳ الجروب هيتفتح تلقائياً بعد 10 دقائق"
             )
             asyncio.create_task(do_announce(context, target_chat, announce_text))
+            return
+
+        # ============================================================
+        # ✅ معالجة حالات /broadcast
+        # ============================================================
+
+        if USER_STATES.get(user_id) == "WAITING_FOR_BROADCAST_TEXT" and update.message.text:
+            context.user_data["broadcast_text"] = update.message.text.strip()
+            USER_STATES[user_id] = "WAITING_FOR_BROADCAST_BTN_TEXT"
+            await update.message.reply_text("✅ تم!\n\n🔘 دلوقتي أرسل نص الزرار:\n\nمثال: قروب المقاطع")
+            return
+
+        if USER_STATES.get(user_id) == "WAITING_FOR_BROADCAST_BTN_TEXT" and update.message.text:
+            context.user_data["broadcast_btn_text"] = update.message.text.strip()
+            USER_STATES[user_id] = "WAITING_FOR_BROADCAST_BTN_LINK"
+            await update.message.reply_text("✅ تم!\n\n🔗 دلوقتي أرسل لينك الزرار:")
+            return
+
+        if USER_STATES.get(user_id) == "WAITING_FOR_BROADCAST_BTN_LINK" and update.message.text:
+            broadcast_text = context.user_data.get("broadcast_text")
+            btn_text = context.user_data.get("broadcast_btn_text")
+            btn_link = update.message.text.strip()
+            USER_STATES[user_id] = None
+            context.user_data["broadcast_text"] = None
+            context.user_data["broadcast_btn_text"] = None
+            await update.message.reply_text("📤 جاري الإرسال لكل الجروبات...")
+            asyncio.create_task(do_broadcast(context, chat_id, broadcast_text, btn_text, btn_link))
             return
 
     if update.effective_chat.type in ["group", "supergroup"] and update.message.text:
@@ -453,7 +519,7 @@ async def main_async():
     app = Application.builder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("links", get_all_links))
-    app.add_handler(CommandHandler("admins", get_all_admins))        # ✅ أمر جديد
+    app.add_handler(CommandHandler("admins", get_all_admins))
     app.add_handler(CommandHandler("post", send_permanent_message))
     app.add_handler(CommandHandler("protect_nsfw", start_nsfw_setup))
     app.add_handler(CommandHandler("lock_photos", lock_photos_command))
@@ -461,6 +527,7 @@ async def main_async():
     app.add_handler(CommandHandler("unban", unban_me))
     app.add_handler(CommandHandler("mystatus", my_status))
     app.add_handler(CommandHandler("announce", announce_command))
+    app.add_handler(CommandHandler("broadcast", broadcast_command))   # ✅ أمر جديد
 
     app.add_handler(ChatMemberHandler(on_chat_member_updated, ChatMemberHandler.CHAT_MEMBER))
     app.add_handler(MessageHandler(filters.PHOTO, photo_cleaner))
