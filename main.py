@@ -188,7 +188,7 @@ async def my_status(update, context):
         await status_msg.edit_text(report, parse_mode="HTML")
 
 # ============================================================
-# أمر الإعلان الجديد /announce
+# أمر الإعلان /announce
 # ============================================================
 
 async def announce_command(update, context):
@@ -201,7 +201,6 @@ async def announce_command(update, context):
 
 async def do_announce(context, chat_id, text):
     try:
-        # 1. قفل الجروب - منع الإرسال لكل الأعضاء
         closed_permissions = ChatPermissions(
             can_send_messages=False,
             can_send_audios=False,
@@ -219,22 +218,16 @@ async def do_announce(context, chat_id, text):
         )
         await context.bot.set_chat_permissions(chat_id=chat_id, permissions=closed_permissions)
 
-        # 2. نشر الرسالة
         sent = await context.bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML")
-
-        # 3. تثبيت الرسالة بدون إشعار
         await context.bot.pin_chat_message(chat_id=chat_id, message_id=sent.message_id, disable_notification=True)
 
-        # 4. انتظار 10 دقائق
         await asyncio.sleep(600)
 
-        # 5. إلغاء التثبيت ومسح الرسالة
         try: await context.bot.unpin_chat_message(chat_id=chat_id, message_id=sent.message_id)
         except: pass
         try: await context.bot.delete_message(chat_id=chat_id, message_id=sent.message_id)
         except: pass
 
-        # 6. فتح الجروب من جديد
         open_permissions = ChatPermissions(
             can_send_messages=True,
             can_send_audios=True,
@@ -254,6 +247,58 @@ async def do_announce(context, chat_id, text):
 
     except Exception as e:
         print(f"Error in do_announce: {e}")
+
+# ============================================================
+# ✅ أمر /admins الجديد - جيب أدمنز كل الجروبات
+# ============================================================
+
+async def get_all_admins(update, context):
+    if update.effective_user.id != MY_USER_ID: return
+    if update.effective_chat.type != "private":
+        await update.message.reply_text("❌ الأمر ده في الخاص بس!")
+        return
+
+    status_msg = await update.message.reply_text("🔄 جاري فحص الأدمنز...")
+    chat_ids = get_tracked_groups()
+
+    if not chat_ids:
+        await status_msg.edit_text("📭 لا توجد مجموعات مسجلة.")
+        return
+
+    report = "👑 <b>أدمنز كل الجروبات:</b>\n\n"
+
+    for cid in chat_ids:
+        try:
+            chat = await context.bot.get_chat(cid)
+            admins = await context.bot.get_chat_administrators(cid)
+
+            report += f"👥 <b>{html.escape(chat.title)}</b>\n"
+            report += f"🆔 <code>{cid}</code>\n"
+            report += f"👮 الأدمنز:\n"
+
+            for admin in admins:
+                user = admin.user
+                if user.is_bot: continue  # تخطي البوتات
+
+                name = html.escape(user.first_name)
+                mention = f"<a href='tg://user?id={user.id}'>{name}</a>"
+                username = f"@{user.username}" if user.username else "❌ مفيش يوزرنيم"
+                role = "👑 أونر" if admin.status == "creator" else "⭐ أدمن"
+
+                report += f"  {role} {mention} | {username}\n"
+
+            report += "\n"
+
+        except Exception as e:
+            report += f"🗑️ <b>جروب غير متاح</b>\n🆔 <code>{cid}</code>\n\n"
+
+    await status_msg.delete()
+
+    if len(report) > 4000:
+        for chunk in [report[i:i+4000] for i in range(0, len(report), 4000)]:
+            await update.message.reply_text(chunk, parse_mode="HTML")
+    else:
+        await update.message.reply_text(report, parse_mode="HTML")
 
 # ============================================================
 
@@ -300,7 +345,6 @@ async def handle_everything(update, context):
                 await processing_msg.edit_text(f"❌ فشل فك الحظر: {e}\nتأكد إن البوت مشرف في المجموعة.")
             return
 
-        # ---- حالات أمر announce ----
         if USER_STATES.get(user_id) == "WAITING_FOR_ANNOUNCE_GROUP" and update.message.text:
             text = update.message.text.strip()
             if text.lstrip('-').isdigit():
@@ -409,13 +453,14 @@ async def main_async():
     app = Application.builder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("links", get_all_links))
+    app.add_handler(CommandHandler("admins", get_all_admins))        # ✅ أمر جديد
     app.add_handler(CommandHandler("post", send_permanent_message))
     app.add_handler(CommandHandler("protect_nsfw", start_nsfw_setup))
     app.add_handler(CommandHandler("lock_photos", lock_photos_command))
     app.add_handler(CommandHandler("unlock_photos", unlock_photos_command))
     app.add_handler(CommandHandler("unban", unban_me))
     app.add_handler(CommandHandler("mystatus", my_status))
-    app.add_handler(CommandHandler("announce", announce_command))  # ✅ أمر جديد
+    app.add_handler(CommandHandler("announce", announce_command))
 
     app.add_handler(ChatMemberHandler(on_chat_member_updated, ChatMemberHandler.CHAT_MEMBER))
     app.add_handler(MessageHandler(filters.PHOTO, photo_cleaner))
