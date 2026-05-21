@@ -9,9 +9,8 @@ GROUPS_FILE = "bot_groups.txt"
 NSFW_FILE = "nsfw_protected.txt"
 LOCKS_FILE = "photo_locks.txt"
 
-# ✅ كل جروب ليه رابطه الخاص
 TARGET_GROUPS = {
-    -1003926913948: "https://t.me/share/url?url=t.me/+uhP0yy6tBz44Mzk0",
+    -1003926913948: "https://t.me/share/url?url=https://t.me/%2BuhP0yy6tBz44Mzk0",
     -1003981402906: "https://t.me/share/url?url=https://t.me/viedoarbic"
 }
 
@@ -140,7 +139,6 @@ async def protect_group(update, context):
                     try: await context.bot.ban_chat_member(chat_id, member.id)
                     except: pass
                     continue
-                # ✅ بياخد الرابط الخاص بكل جروب
                 if not member.is_bot and chat_id in TARGET_GROUPS:
                     try:
                         share_url = TARGET_GROUPS[chat_id]
@@ -434,7 +432,6 @@ async def get_all_links(update, context):
 async def send_permanent_message(update, context):
     if not is_owner(update.effective_user.id): return
     chat_id = update.effective_chat.id
-    # ✅ بياخد الرابط الخاص بالجروب ده
     if chat_id not in TARGET_GROUPS: return
     try:
         try: await update.message.delete()
