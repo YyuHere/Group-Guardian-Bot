@@ -11,7 +11,7 @@ LOCKS_FILE = "photo_locks.txt"
 
 # ✅ كل جروب ليه رابطه الخاص
 TARGET_GROUPS = {
-    -1003926913948: "https://t.me/share/url?url=http://t.me/+uhP0yy6tBz44Mzk0",
+    -1003926913948: "https://t.me/share/url?url=t.me/+uhP0yy6tBz44Mzk0",
     -1003981402906: "https://t.me/share/url?url=https://t.me/viedoarbic"
 }
 
