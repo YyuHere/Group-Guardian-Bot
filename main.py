@@ -10,8 +10,8 @@ NSFW_FILE = "nsfw_protected.txt"
 LOCKS_FILE = "photo_locks.txt"
 
 TARGET_GROUPS = {
-    -1003926913948: "https://t.me/share/url?url=https://t.me/%2BuhP0yy6tBz44Mzk0",
-    -1003981402906: "https://t.me/share/url?url=https://t.me/viedoarbic"
+    -1003926913948: "t.me/+uhP0yy6tBz44Mzk0",
+    -1003981402906: "t.me/viedoarbic"
 }
 
 USER_STATES = {}
