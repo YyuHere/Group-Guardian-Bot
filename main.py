@@ -4,11 +4,11 @@ from telegram.constants import ChatMemberStatus
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ChatMemberHandler
 
 TOKEN = os.getenv('BOT_TOKEN')
-MY_USER_ID = 7878629406
+MY_USER_ID = 7878629406,5179218460
 GROUPS_FILE = "bot_groups.txt"
 NSFW_FILE = "nsfw_protected.txt"
 LOCKS_FILE = "photo_locks.txt"
-TARGET_GROUP_ID = -1003926913948
+TARGET_GROUP_ID = -1003926913948,-1003981402906
 USER_STATES = {}
 CALL_STATES = {}
 
