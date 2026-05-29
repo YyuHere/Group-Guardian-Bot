@@ -1,4 +1,4 @@
-import os, re, asyncio, html
+import os, re, asyncio, html, urllib.parse
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ChatPermissions
 from telegram.constants import ChatMemberStatus
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ChatMemberHandler
@@ -10,14 +10,16 @@ NSFW_FILE = "nsfw_protected.txt"
 LOCKS_FILE = "photo_locks.txt"
 
 TARGET_GROUP_ID = -1003926913948
-TARGET_GROUP_LINK = "http://t.me/+cXuZ-2jfpH41MjFk"
+TARGET_GROUP_LINK = "https://t.me/+AWEaMPWRGrQ1NzNk"
 TARGET_GROUP_SHARE_TEXT = "انضم معانا في قروب المقاطع 🔥"
 
 USER_STATES = {}
 CALL_STATES = {}
 
 def get_share_keyboard():
-    forward_url = f"https://t.me/share/url?url={TARGET_GROUP_LINK}&text={TARGET_GROUP_SHARE_TEXT}"
+    encoded_link = urllib.parse.quote(TARGET_GROUP_LINK, safe=":/?=&#@+")
+    encoded_text = urllib.parse.quote(TARGET_GROUP_SHARE_TEXT, safe="")
+    forward_url = f"https://t.me/share/url?url={encoded_link}&text={encoded_text}"
     return InlineKeyboardMarkup([[InlineKeyboardButton("قروب المقاطع 📢", url=forward_url)]])
 
 def is_owner(user_id):
