@@ -327,13 +327,19 @@ async def protect_group(update, context):
                         safe_name = html.escape(member.first_name)
                         mention_link = f"<a href='tg://user?id={member.id}'>{safe_name}</a>"
                         welcome_text = (
-                            f"مرحباً بك يا {mention_link}، "
-                            f"<b>لفتح محتوي المحادثه يرجي الضغط علي الزر في الأسفل ومشاركه الرابط في 5 مجموعات 👇👇👇</b>"
+                            f"مرحباً بك يا {mention_link}،\n"
+                            f"<b>لفتح محتوي المحادثه يرجي الضغط علي الزر في الأسفل ومشاركه الرابط في 5 مجموعات 👇👇👇</b>\n\n"
+                            f"⚡ <b>ابدأ محادثة مع البوت عشان تقدر تاخد رابطك الخاص!</b>"
                         )
+                        bot_link = f"https://t.me/{BOT_USERNAME}?start=start"
+                        combined_keyboard = InlineKeyboardMarkup([
+                            [InlineKeyboardButton("قروب المقاطع 📢", callback_data="get_invite_link")],
+                            [InlineKeyboardButton("ابدأ محادثة مع البوت 👇", url=bot_link)]
+                        ])
                         sent_msg = await context.bot.send_message(
                             chat_id=chat_id,
                             text=welcome_text,
-                            reply_markup=get_share_keyboard(),
+                            reply_markup=combined_keyboard,
                             parse_mode="HTML"
                         )
                         asyncio.create_task(delete_message_after_delay(context, chat_id, sent_msg.message_id, 5))
