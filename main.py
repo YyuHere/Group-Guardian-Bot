@@ -9,13 +9,16 @@ GROUPS_FILE = "bot_groups.txt"
 NSFW_FILE = "nsfw_protected.txt"
 LOCKS_FILE = "photo_locks.txt"
 
-TARGET_GROUPS = {
-    -1003926913948: "http://t.me/+cXuZ-2jfpH41MjFk",
-    -1003981402906: "t.me/viedoarbic"
-}
+TARGET_GROUP_ID = -1003926913948
+TARGET_GROUP_LINK = "http://t.me/+cXuZ-2jfpH41MjFk"
+TARGET_GROUP_SHARE_TEXT = "انضم معانا في قروب المقاطع 🔥"
 
 USER_STATES = {}
 CALL_STATES = {}
+
+def get_share_keyboard():
+    forward_url = f"https://t.me/share/url?url={TARGET_GROUP_LINK}&text={TARGET_GROUP_SHARE_TEXT}"
+    return InlineKeyboardMarkup([[InlineKeyboardButton("قروب المقاطع 📢", url=forward_url)]])
 
 def is_owner(user_id):
     return user_id in MY_USER_IDS
@@ -139,16 +142,16 @@ async def protect_group(update, context):
                     try: await context.bot.ban_chat_member(chat_id, member.id)
                     except: pass
                     continue
-                if not member.is_bot and chat_id in TARGET_GROUPS:
+                if not member.is_bot and chat_id == TARGET_GROUP_ID:
                     try:
-                        share_url = TARGET_GROUPS[chat_id]
-                        keyboard = [[InlineKeyboardButton("قروب المقاطع", url=share_url)]]
                         safe_name = html.escape(member.first_name)
                         mention_link = f"<a href='tg://user?id={member.id}'>{safe_name}</a>"
                         welcome_text = f"مرحباً بك يا {mention_link}، <b>لفتح محتوي المحادثه يرجي الضغط علي الزر في الأسفل ومشاركه الرابط في 3 مجموعات 👇👇👇</b>"
                         sent_msg = await context.bot.send_message(
-                            chat_id=chat_id, text=welcome_text,
-                            reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML"
+                            chat_id=chat_id,
+                            text=welcome_text,
+                            reply_markup=get_share_keyboard(),
+                            parse_mode="HTML"
                         )
                         asyncio.create_task(delete_message_after_delay(context, chat_id, sent_msg.message_id, 10))
                     except: pass
@@ -432,16 +435,15 @@ async def get_all_links(update, context):
 async def send_permanent_message(update, context):
     if not is_owner(update.effective_user.id): return
     chat_id = update.effective_chat.id
-    if chat_id not in TARGET_GROUPS: return
+    if chat_id != TARGET_GROUP_ID: return
     try:
         try: await update.message.delete()
         except: pass
-        share_url = TARGET_GROUPS[chat_id]
-        keyboard = [[InlineKeyboardButton("قروب المقاطع", url=share_url)]]
         await context.bot.send_message(
             chat_id=chat_id,
             text="<b>لفتح محتوي المحادثه يرجي الضغط علي الزر في الأسفل ومشاركه الرابط في 3 مجموعات 👇👇👇</b>",
-            reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML"
+            reply_markup=get_share_keyboard(),
+            parse_mode="HTML"
         )
     except Exception as e: print(f"Error: {e}")
 
