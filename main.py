@@ -365,6 +365,16 @@ async def send_permanent_message(update, context):
             reply_markup=get_share_keyboard(),
             parse_mode="HTML"
         )
+        bot_link = f"https://t.me/{BOT_USERNAME}?start=start"
+        keyboard2 = InlineKeyboardMarkup([[
+            InlineKeyboardButton("ابدأ محادثة مع البوت 👇", url=bot_link)
+        ]])
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="⚡ <b>ابدأ محادثة مع البوت عشان تقدر تاخد رابطك الخاص!</b>",
+            reply_markup=keyboard2,
+            parse_mode="HTML"
+        )
     except Exception as e: print(f"Error: {e}")
 
 
