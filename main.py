@@ -1,7 +1,7 @@
 import os, re, asyncio, html, urllib.parse, json
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ChatPermissions
 from telegram.constants import ChatMemberStatus
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ChatMemberHandler, CallbackQueryHandler
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ChatMemberHandler, CallbackQueryHandler, ChatJoinRequestHandler
 
 TOKEN = os.getenv('BOT_TOKEN')
 BOT_USERNAME = os.getenv('BOT_USERNAME', 'Fandamsbot')
@@ -157,7 +157,7 @@ async def handle_invite_callback(update, context):
             link_obj = await context.bot.create_chat_invite_link(
                 chat_id=TARGET_GROUP_ID,
                 name=f"invite_{user_id}",
-                creates_join_request=False
+                creates_join_request=True
             )
             invite_link = link_obj.invite_link
             save_user_invite_link(user_id, invite_link)
@@ -212,7 +212,7 @@ async def start_command(update, context):
             link_obj = await context.bot.create_chat_invite_link(
                 chat_id=TARGET_GROUP_ID,
                 name=f"invite_{user_id}",
-                creates_join_request=False
+                creates_join_request=True
             )
             invite_link = link_obj.invite_link
             save_user_invite_link(user_id, invite_link)
@@ -269,37 +269,7 @@ async def on_chat_member_updated(update, context):
         except Exception as e: print(f"Error promote: {e}")
         return
 
-    # لو حد انضم للتارجت جروب - احسب الانفايت
-    if (result.new_chat_member.status == ChatMemberStatus.MEMBER
-            and update.effective_chat.id == TARGET_GROUP_ID
-            and result.new_chat_member.user.id not in MY_USER_IDS):
-
-        # جرب تاخد الرابط من كل الطرق الممكنة
-        invite_link_obj = getattr(result, 'invite_link', None)
-        link_str = None
-
-        if invite_link_obj:
-            if hasattr(invite_link_obj, 'invite_link'):
-                link_str = invite_link_obj.invite_link
-            elif isinstance(invite_link_obj, str):
-                link_str = invite_link_obj
-
-        print(f"[INVITE] New member: {result.new_chat_member.user.id}, link: {link_str}")
-
-        if link_str:
-            inviter_id = get_user_id_by_link(link_str)
-            if inviter_id and inviter_id != result.new_chat_member.user.id:
-                increment_invite(inviter_id)
-                count = get_invite_count(inviter_id)
-                new_member_name = html.escape(result.new_chat_member.user.first_name)
-                try:
-                    await context.bot.send_message(
-                        chat_id=inviter_id,
-                        text=f"✅ <b>{new_member_name}</b> انضم للجروب من رابطك!\n"
-                             f"👥 إجمالي انفايتاتك: <b>{count}</b>",
-                        parse_mode="HTML"
-                    )
-                except: pass
+    # لو حد انضم للتارجت جروب - الانفايت بيتحسب في handle_join_request
 
     # سحب رتبة من طرد عضو
     if result.new_chat_member.status in [ChatMemberStatus.BANNED, ChatMemberStatus.LEFT]:
@@ -386,6 +356,47 @@ async def send_permanent_message(update, context):
         )
     except Exception as e: print(f"Error: {e}")
 
+
+async def handle_join_request(update, context):
+    """بيشتغل لما حد يطلب الانضمام عن طريق رابط join_request"""
+    request = update.chat_join_request
+    if not request: return
+    if request.chat.id != TARGET_GROUP_ID: return
+
+    user_id = request.from_user.id
+    invite_link_obj = getattr(request, 'invite_link', None)
+    link_str = None
+
+    if invite_link_obj:
+        if hasattr(invite_link_obj, 'invite_link'):
+            link_str = invite_link_obj.invite_link
+        elif isinstance(invite_link_obj, str):
+            link_str = invite_link_obj
+
+    print(f"[JOIN_REQUEST] user: {user_id}, link: {link_str}")
+
+    # وافق على الطلب
+    try:
+        await context.bot.approve_chat_join_request(chat_id=TARGET_GROUP_ID, user_id=user_id)
+    except Exception as e:
+        print(f"Error approving: {e}")
+
+    # احسب الانفايت
+    if link_str:
+        inviter_id = get_user_id_by_link(link_str)
+        if inviter_id and inviter_id != user_id:
+            increment_invite(inviter_id)
+            count = get_invite_count(inviter_id)
+            new_member_name = html.escape(request.from_user.first_name)
+            try:
+                await context.bot.send_message(
+                    chat_id=inviter_id,
+                    text=f"✅ <b>{new_member_name}</b> انضم للجروب من رابطك!\n"
+                         f"👥 إجمالي انفايتاتك: <b>{count}</b>",
+                    parse_mode="HTML"
+                )
+            except: pass
+
 async def main_async():
     app = Application.builder().token(TOKEN).build()
 
@@ -396,6 +407,7 @@ async def main_async():
     app.add_handler(CallbackQueryHandler(handle_invite_callback, pattern="^get_invite_link$"))
     app.add_handler(CallbackQueryHandler(handle_check_subscription, pattern="^check_subscription$"))
     app.add_handler(ChatMemberHandler(on_chat_member_updated, ChatMemberHandler.CHAT_MEMBER))
+    app.add_handler(ChatJoinRequestHandler(handle_join_request))
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS | filters.StatusUpdate.LEFT_CHAT_MEMBER, protect_group))
     app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_everything))
 
