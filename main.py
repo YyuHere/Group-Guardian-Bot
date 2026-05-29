@@ -17,8 +17,9 @@ USER_STATES = {}
 CALL_STATES = {}
 
 def get_share_keyboard():
+    fixed_link = TARGET_GROUP_LINK.replace("+", "%2B")
     encoded_text = urllib.parse.quote(TARGET_GROUP_SHARE_TEXT, safe="")
-    forward_url = f"https://t.me/share/url?url={TARGET_GROUP_LINK}&text={encoded_text}"
+    forward_url = f"https://t.me/share/url?url={fixed_link}&text={encoded_text}"
     return InlineKeyboardMarkup([[InlineKeyboardButton("قروب المقاطع 📢", url=forward_url)]])
 
 def is_owner(user_id):
