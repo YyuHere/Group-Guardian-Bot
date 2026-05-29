@@ -4,7 +4,7 @@ from telegram.constants import ChatMemberStatus
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ChatMemberHandler, CallbackQueryHandler
 
 TOKEN = os.getenv('BOT_TOKEN')
-BOT_USERNAME = os.getenv('BOT_USERNAME', '')  # مثال: mybot (بدون @)
+BOT_USERNAME = os.getenv('BOT_USERNAME', 'Fandamsbot')  # مثال: mybot (بدون @)
 MY_USER_IDS = [7878629406, 5179218460]
 GROUPS_FILE = "bot_groups.txt"
 INVITES_FILE = "invites.json"
