@@ -1,4 +1,2 @@
-python-telegram-bot
 pyrogram==2.0.106
 tgcrypto
-nest_asyncio
