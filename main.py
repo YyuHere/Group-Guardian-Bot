@@ -18,20 +18,15 @@ REQUIRED_GROUP_USERNAME = "viedoarbic"
 # ===== التحقق من الاشتراك =====
 
 async def is_subscribed(context, user_id):
-    """يتحقق من الاشتراك في القناة والجروب معاً"""
+    """يتحقق من الاشتراك في القناة فقط"""
     try:
         ch = await context.bot.get_chat_member(chat_id=REQUIRED_CHANNEL, user_id=user_id)
         if ch.status in [ChatMemberStatus.LEFT, ChatMemberStatus.BANNED]:
             return False
-    except:
+        return True
+    except Exception as e:
+        print(f"[SUBSCRIBE CHECK] Error: {e}")
         return False
-    try:
-        gr = await context.bot.get_chat_member(chat_id=REQUIRED_GROUP_ID, user_id=user_id)
-        if gr.status in [ChatMemberStatus.LEFT, ChatMemberStatus.BANNED]:
-            return False
-    except:
-        return False
-    return True
 
 async def send_subscribe_message(target, context, is_callback=False, user_id=None):
     keyboard = InlineKeyboardMarkup([
