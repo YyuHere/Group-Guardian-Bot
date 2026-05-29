@@ -10,7 +10,7 @@ NSFW_FILE = "nsfw_protected.txt"
 LOCKS_FILE = "photo_locks.txt"
 
 TARGET_GROUPS = {
-    -1003926913948: "t.me/+uhP0yy6tBz44Mzk0",
+    -1003926913948: "t.me/+cXuZ-2jfpH41MjFk",
     -1003981402906: "t.me/viedoarbic"
 }
 
