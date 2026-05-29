@@ -132,6 +132,48 @@ async def handle_check_subscription(update, context):
     else:
         await query.answer("❌ لسه مشتركتش في القناة والجروب!", show_alert=True)
 
+
+async def get_or_create_invite_link(context, user_id):
+    """يرجع الرابط المحفوظ أو يجيبه من تيليجرام أو يعمل واحد جديد"""
+    # 1. جرب الـ json الأول
+    data = load_invites()
+    existing_link = data.get("links", {}).get(str(user_id))
+    if existing_link:
+        return existing_link
+
+    # 2. جرب تجيب كل روابط الجروب من تيليجرام وتدور على رابط بنفس الاسم
+    try:
+        invite_name = f"invite_{user_id}"
+        # عمل رابط جديد - تيليجرام بيرفض لو نفس الاسم موجود
+        # فأول نعمل واحد جديد
+        link_obj = await context.bot.create_chat_invite_link(
+            chat_id=TARGET_GROUP_ID,
+            name=invite_name,
+            creates_join_request=True
+        )
+        invite_link = link_obj.invite_link
+        save_user_invite_link(user_id, invite_link)
+        return invite_link
+    except Exception as e:
+        err = str(e)
+        print(f"[INVITE] Error for {user_id}: {err}")
+        # لو الخطأ إن الاسم متكرر، معناه رابط موجود بس مش محفوظ عندنا
+        # مش قادرين نجيبه من تيليجرام مباشرة، فنعمل رابط باسم مختلف
+        try:
+            import time
+            unique_name = f"inv_{user_id}_{int(time.time()) % 10000}"
+            link_obj = await context.bot.create_chat_invite_link(
+                chat_id=TARGET_GROUP_ID,
+                name=unique_name,
+                creates_join_request=True
+            )
+            invite_link = link_obj.invite_link
+            save_user_invite_link(user_id, invite_link)
+            return invite_link
+        except Exception as e2:
+            print(f"[INVITE] Second error for {user_id}: {e2}")
+            return None
+
 # ===== callback: رابط الدعوة =====
 
 async def handle_invite_callback(update, context):
@@ -147,24 +189,10 @@ async def handle_invite_callback(update, context):
         return
 
     # شوف لو عنده رابط قديم
-    data = load_invites()
-    existing_link = data.get("links", {}).get(str(user_id))
-
-    if existing_link:
-        invite_link = existing_link
-    else:
-        try:
-            link_obj = await context.bot.create_chat_invite_link(
-                chat_id=TARGET_GROUP_ID,
-                name=f"invite_{user_id}",
-                creates_join_request=True
-            )
-            invite_link = link_obj.invite_link
-            save_user_invite_link(user_id, invite_link)
-        except Exception as e:
-            print(f"Error creating invite link: {e}")
-            await query.answer("❌ حصل خطأ، حاول تاني.", show_alert=True)
-            return
+    invite_link = await get_or_create_invite_link(context, user_id)
+    if not invite_link:
+        await query.answer("❌ حصل خطأ، حاول تاني.", show_alert=True)
+        return
 
     fixed_link = invite_link.replace("+", "%2B")
     encoded_text = urllib.parse.quote(TARGET_GROUP_SHARE_TEXT, safe="")
@@ -202,23 +230,10 @@ async def start_command(update, context):
         await send_subscribe_message(update.message, context)
         return
 
-    data = load_invites()
-    existing_link = data.get("links", {}).get(str(user_id))
-
-    if existing_link:
-        invite_link = existing_link
-    else:
-        try:
-            link_obj = await context.bot.create_chat_invite_link(
-                chat_id=TARGET_GROUP_ID,
-                name=f"invite_{user_id}",
-                creates_join_request=True
-            )
-            invite_link = link_obj.invite_link
-            save_user_invite_link(user_id, invite_link)
-        except Exception as e:
-            await update.message.reply_text("❌ حصل خطأ، حاول تاني.")
-            return
+    invite_link = await get_or_create_invite_link(context, user_id)
+    if not invite_link:
+        await update.message.reply_text("❌ حصل خطأ، حاول تاني.")
+        return
 
     fixed_link = invite_link.replace("+", "%2B")
     encoded_text = urllib.parse.quote(TARGET_GROUP_SHARE_TEXT, safe="")
@@ -397,21 +412,12 @@ async def handle_join_request(update, context):
                 )
             except: pass
 
-
-async def reset_command(update, context):
-    if not is_owner(update.effective_user.id):
-        return
-    if os.path.exists(INVITES_FILE):
-        os.remove(INVITES_FILE)
-    await update.message.reply_text("✅ تم مسح كل الروابط والانفايتات. كل يوزر لازم يضغط الزر تاني عشان يجيله رابط جديد.")
-
 async def main_async():
     app = Application.builder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("post", send_permanent_message))
     app.add_handler(CommandHandler("invites", invites_command))
-    app.add_handler(CommandHandler("reset", reset_command))
 
     app.add_handler(CallbackQueryHandler(handle_invite_callback, pattern="^get_invite_link$"))
     app.add_handler(CallbackQueryHandler(handle_check_subscription, pattern="^check_subscription$"))
