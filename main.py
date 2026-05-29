@@ -408,12 +408,46 @@ async def handle_join_request(update, context):
             except: pass
 
 
-async def reset_command(update, context):
+async def clearlinks_command(update, context):
     if not is_owner(update.effective_user.id):
         return
+    await update.message.reply_text("⏳ جاري مسح كل روابط الدعوة...")
+    
+    deleted = 0
+    failed = 0
+    
+    try:
+        # جيب كل روابط الجروب
+        invite_links = await context.bot.get_chat(TARGET_GROUP_ID)
+        # مسح الـ json
+        if os.path.exists(INVITES_FILE):
+            os.remove(INVITES_FILE)
+        
+        # مسح كل الروابط من تيليجرام
+        data = load_invites()
+        for uid, link in data.get("links", {}).items():
+            try:
+                await context.bot.revoke_chat_invite_link(
+                    chat_id=TARGET_GROUP_ID,
+                    invite_link=link
+                )
+                deleted += 1
+            except Exception as e:
+                print(f"Error revoking {link}: {e}")
+                failed += 1
+    except Exception as e:
+        print(f"Error: {e}")
+    
+    # مسح الـ json على طول
     if os.path.exists(INVITES_FILE):
         os.remove(INVITES_FILE)
-    await update.message.reply_text("✅ تم مسح كل الروابط والانفايتات.")
+    
+    await update.message.reply_text(
+        f"✅ تم مسح الـ json\n"
+        f"روابط اتمسحت: {deleted}\n"
+        f"روابط فشلت: {failed}\n\n"
+        f"دلوقتي روح روابط الدعوة في تيليجرام وامسح الباقي يدوياً إن وجد."
+    )
 
 async def main_async():
     app = Application.builder().token(TOKEN).build()
@@ -421,7 +455,6 @@ async def main_async():
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("post", send_permanent_message))
     app.add_handler(CommandHandler("invites", invites_command))
-    app.add_handler(CommandHandler("reset", reset_command))
 
     app.add_handler(CallbackQueryHandler(handle_invite_callback, pattern="^get_invite_link$"))
     app.add_handler(CallbackQueryHandler(handle_check_subscription, pattern="^check_subscription$"))
