@@ -9,7 +9,7 @@ MY_USER_IDS = [7878629406, 5179218460, 8681024721]
 GROUPS_FILE = "bot_groups.txt"
 INVITES_FILE = "invites.json"
 
-TARGET_GROUP_ID = -1003926913948
+TARGET_GROUP_ID = -1003981402906
 TARGET_GROUP_SHARE_TEXT = "انضم معانا في قروب المقاطع 🔥"
 
 # ===== نظام الانفايت =====
