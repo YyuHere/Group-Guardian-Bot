@@ -89,6 +89,29 @@ def increment_invite(user_id):
     data["counts"][uid] = data["counts"].get(uid, 0) + 1
     save_invites(data)
 
+def decrement_invite(user_id):
+    data = load_invites()
+    if "counts" not in data:
+        return
+    uid = str(user_id)
+    current = data["counts"].get(uid, 0)
+    if current > 0:
+        data["counts"][uid] = current - 1
+    save_invites(data)
+
+def get_inviter_by_joined_user(user_id):
+    """يرجع id الشخص اللي دعا هذا اليوزر"""
+    data = load_invites()
+    return data.get("user_inviters", {}).get(str(user_id))
+
+def save_user_inviter(joined_user_id, inviter_id):
+    """يحفظ مين دعا مين"""
+    data = load_invites()
+    if "user_inviters" not in data:
+        data["user_inviters"] = {}
+    data["user_inviters"][str(joined_user_id)] = inviter_id
+    save_invites(data)
+
 # ===== كيبورد =====
 
 def get_share_keyboard():
@@ -286,6 +309,28 @@ async def on_chat_member_updated(update, context):
 
     # لو حد انضم للتارجت جروب - الانفايت بيتحسب في handle_join_request
 
+    # لو حد خرج من التارجت جروب - انقص انفايت الشخص اللي دعاه
+    if (update.effective_chat.id == TARGET_GROUP_ID and
+        result.new_chat_member.status in [ChatMemberStatus.LEFT, ChatMemberStatus.BANNED] and
+        result.old_chat_member.status == ChatMemberStatus.MEMBER):
+        left_user_id = result.new_chat_member.user.id
+        left_user_name = html.escape(result.new_chat_member.user.first_name)
+        inviter_id = get_inviter_by_joined_user(left_user_id)
+        if inviter_id:
+            decrement_invite(inviter_id)
+            count = get_invite_count(inviter_id)
+            mention = f"<a href='tg://user?id={left_user_id}'>{left_user_name}</a>"
+            try:
+                await context.bot.send_message(
+                    chat_id=inviter_id,
+                    text=f"😔 {mention} غادر الجروب!
+"
+                         f"👥 انفايتاتك دلوقتي: <b>{count}</b>",
+                    parse_mode="HTML"
+                )
+            except Exception as e:
+                print(f"[LEFT] Error notifying inviter: {e}")
+
     # سحب رتبة من طرد عضو
     if result.new_chat_member.status in [ChatMemberStatus.BANNED, ChatMemberStatus.LEFT]:
         actor_id = result.from_user.id
@@ -420,6 +465,7 @@ async def handle_join_request(update, context):
             joined_users.append(user_id)
             data["joined_users"] = joined_users
             save_invites(data)
+            save_user_inviter(user_id, inviter_id)
 
             increment_invite(inviter_id)
             count = get_invite_count(inviter_id)
