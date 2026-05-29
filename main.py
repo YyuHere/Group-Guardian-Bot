@@ -4,13 +4,34 @@ from telegram.constants import ChatMemberStatus
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ChatMemberHandler, CallbackQueryHandler
 
 TOKEN = os.getenv('BOT_TOKEN')
-BOT_USERNAME = os.getenv('BOT_USERNAME', 'Fandamsbot')  # مثال: mybot (بدون @)
+BOT_USERNAME = os.getenv('BOT_USERNAME', 'frreevideosbot')  # مثال: mybot (بدون @)
 MY_USER_IDS = [7878629406, 5179218460, 8681024721]
 GROUPS_FILE = "bot_groups.txt"
 INVITES_FILE = "invites.json"
 
 TARGET_GROUP_ID = -1003981402906
 TARGET_GROUP_SHARE_TEXT = "انضم معانا في قروب المقاطع 🔥"
+REQUIRED_CHANNEL = "@viedoarbic"
+
+# ===== التحقق من الاشتراك =====
+
+async def is_subscribed(context, user_id):
+    try:
+        member = await context.bot.get_chat_member(chat_id=REQUIRED_CHANNEL, user_id=user_id)
+        return member.status not in [ChatMemberStatus.LEFT, ChatMemberStatus.BANNED]
+    except:
+        return False
+
+async def send_subscribe_message(target, context, is_callback=False):
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("اشترك في القناة 📢", url=f"https://t.me/viedoarbic")],
+        [InlineKeyboardButton("✅ تحققت من اشتراكي", callback_data="check_subscription")]
+    ])
+    text = "⚠️ <b>يجب عليك الاشتراك في قناتنا أولاً للمتابعة!</b>\n\n👇 اشترك ثم اضغط تحققت"
+    if is_callback:
+        await target.message.reply_text(text, reply_markup=keyboard, parse_mode="HTML")
+    else:
+        await target.reply_text(text, reply_markup=keyboard, parse_mode="HTML")
 
 # ===== نظام الانفايت =====
 
@@ -77,12 +98,26 @@ async def delete_message_after_delay(context, chat_id, message_id, delay):
 
 # ===== callback: لما حد يضغط الزر =====
 
+async def handle_check_subscription(update, context):
+    query = update.callback_query
+    user_id = query.from_user.id
+    await query.answer()
+    if await is_subscribed(context, user_id):
+        await query.message.edit_text("✅ <b>تم التحقق! شكراً لاشتراكك.</b>\nدلوقتي اضغط الزر في الجروب مرة تانية.", parse_mode="HTML")
+    else:
+        await query.answer("❌ لسه مشتركتش في القناة!", show_alert=True)
+
 async def handle_invite_callback(update, context):
     query = update.callback_query
     user = query.from_user
     user_id = user.id
 
     await query.answer()
+
+    # تحقق من الاشتراك
+    if not await is_subscribed(context, user_id):
+        await send_subscribe_message(query, context, is_callback=True)
+        return
 
     # شوف لو عنده رابط قديم
     data = load_invites()
@@ -138,7 +173,11 @@ async def start_command(update, context):
     user_id = update.effective_user.id
     if update.effective_chat.type != "private":
         return
-    # لو جه من زر "ابدأ المحادثة"
+
+    # تحقق من الاشتراك
+    if not await is_subscribed(context, user_id):
+        await send_subscribe_message(update.message, context)
+        return
     data = load_invites()
     existing_link = data.get("links", {}).get(str(user_id))
 
@@ -281,7 +320,7 @@ async def protect_group(update, context):
                             reply_markup=get_share_keyboard(),
                             parse_mode="HTML"
                         )
-                        asyncio.create_task(delete_message_after_delay(context, chat_id, sent_msg.message_id, 60))
+                        asyncio.create_task(delete_message_after_delay(context, chat_id, sent_msg.message_id, 5))
                     except: pass
 
 async def handle_everything(update, context):
@@ -320,6 +359,7 @@ async def main_async():
     app.add_handler(CommandHandler("invites", invites_command))
 
     app.add_handler(CallbackQueryHandler(handle_invite_callback, pattern="^get_invite_link$"))
+    app.add_handler(CallbackQueryHandler(handle_check_subscription, pattern="^check_subscription$"))
     app.add_handler(ChatMemberHandler(on_chat_member_updated, ChatMemberHandler.CHAT_MEMBER))
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS | filters.StatusUpdate.LEFT_CHAT_MEMBER, protect_group))
     app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_everything))
