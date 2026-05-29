@@ -323,8 +323,7 @@ async def on_chat_member_updated(update, context):
             try:
                 await context.bot.send_message(
                     chat_id=inviter_id,
-                    text=f"😔 {mention} غادر الجروب!
-"
+                    text=f"😔 {mention} غادر الجروب!\n"
                          f"👥 انفايتاتك دلوقتي: <b>{count}</b>",
                     parse_mode="HTML"
                 )
