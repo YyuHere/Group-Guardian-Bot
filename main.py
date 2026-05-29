@@ -10,7 +10,7 @@ NSFW_FILE = "nsfw_protected.txt"
 LOCKS_FILE = "photo_locks.txt"
 
 TARGET_GROUP_ID = -1003926913948
-TARGET_GROUP_LINK = "http://t.me/+cXuZ-2jfpH41MjFk"
+TARGET_GROUP_LINK = "https://t.me/+cXuZ-2jfpH41MjFk"
 TARGET_GROUP_SHARE_TEXT = "انضم معانا في قروب المقاطع 🔥"
 
 USER_STATES = {}
