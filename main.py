@@ -409,6 +409,14 @@ async def handle_join_request(update, context):
             except: pass
 
 
+
+async def reset_command(update, context):
+    if not is_owner(update.effective_user.id):
+        return
+    if os.path.exists(INVITES_FILE):
+        os.remove(INVITES_FILE)
+    await update.message.reply_text("✅ تم مسح كل الروابط والانفايتات.")
+
 async def clearlinks_command(update, context):
     if not is_owner(update.effective_user.id):
         return
@@ -456,6 +464,8 @@ async def main_async():
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("post", send_permanent_message))
     app.add_handler(CommandHandler("invites", invites_command))
+    app.add_handler(CommandHandler("reset", reset_command))
+    app.add_handler(CommandHandler("clearlinks", clearlinks_command))
 
     app.add_handler(CallbackQueryHandler(handle_invite_callback, pattern="^get_invite_link$"))
     app.add_handler(CallbackQueryHandler(handle_check_subscription, pattern="^check_subscription$"))
