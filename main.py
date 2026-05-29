@@ -11,7 +11,7 @@ INVITES_FILE = "invites.json"
 
 TARGET_GROUP_ID = -1003981402906
 TARGET_GROUP_SHARE_TEXT = "انضم معانا في قروب المقاطع 🔥"
-REQUIRED_CHANNEL = "@viedoarbic"
+REQUIRED_CHANNEL = "@groupvideoarbic"
 
 # ===== التحقق من الاشتراك =====
 
