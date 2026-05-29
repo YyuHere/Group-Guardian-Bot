@@ -410,6 +410,17 @@ async def handle_join_request(update, context):
     if link_str:
         inviter_id = get_user_id_by_link(link_str)
         if inviter_id and inviter_id != user_id:
+            # تحقق إن نفس اليوزر ده ما اتحسبش قبل كده
+            data = load_invites()
+            joined_users = data.get("joined_users", [])
+            if user_id in joined_users:
+                print(f"[JOIN_REQUEST] user {user_id} already counted, skipping.")
+                return
+            # سجّله عشان ما يتحسبش تاني
+            joined_users.append(user_id)
+            data["joined_users"] = joined_users
+            save_invites(data)
+
             increment_invite(inviter_id)
             count = get_invite_count(inviter_id)
             new_member_name = html.escape(request.from_user.first_name)
