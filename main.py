@@ -4,30 +4,47 @@ from telegram.constants import ChatMemberStatus
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ChatMemberHandler, CallbackQueryHandler
 
 TOKEN = os.getenv('BOT_TOKEN')
-BOT_USERNAME = os.getenv('BOT_USERNAME', 'frreevideosbot')  # مثال: mybot (بدون @)
+BOT_USERNAME = os.getenv('BOT_USERNAME', 'Fandamsbot')
 MY_USER_IDS = [7878629406, 5179218460, 8681024721]
 GROUPS_FILE = "bot_groups.txt"
 INVITES_FILE = "invites.json"
 
-TARGET_GROUP_ID = -1003981402906
+TARGET_GROUP_ID = -1003859653293
 TARGET_GROUP_SHARE_TEXT = "انضم معانا في قروب المقاطع 🔥"
 REQUIRED_CHANNEL = "@groupvideoarbic"
+REQUIRED_GROUP_ID = -1003981402906
+REQUIRED_GROUP_USERNAME = "viedoarbic"
 
 # ===== التحقق من الاشتراك =====
 
 async def is_subscribed(context, user_id):
+    """يتحقق من الاشتراك في القناة والجروب معاً"""
     try:
-        member = await context.bot.get_chat_member(chat_id=REQUIRED_CHANNEL, user_id=user_id)
-        return member.status not in [ChatMemberStatus.LEFT, ChatMemberStatus.BANNED]
+        ch = await context.bot.get_chat_member(chat_id=REQUIRED_CHANNEL, user_id=user_id)
+        if ch.status in [ChatMemberStatus.LEFT, ChatMemberStatus.BANNED]:
+            return False
     except:
         return False
+    try:
+        gr = await context.bot.get_chat_member(chat_id=REQUIRED_GROUP_ID, user_id=user_id)
+        if gr.status in [ChatMemberStatus.LEFT, ChatMemberStatus.BANNED]:
+            return False
+    except:
+        return False
+    return True
 
 async def send_subscribe_message(target, context, is_callback=False):
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("اشترك في القناة 📢", url=f"https://t.me/viedoarbic")],
+        [InlineKeyboardButton("اشترك في القناة 📢", url="https://t.me/groupvideoarbic")],
+        [InlineKeyboardButton("انضم للجروب 👥", url="https://t.me/viedoarbic")],
         [InlineKeyboardButton("✅ تحققت من اشتراكي", callback_data="check_subscription")]
     ])
-    text = "⚠️ <b>يجب عليك الاشتراك في قناتنا أولاً للمتابعة!</b>\n\n👇 اشترك ثم اضغط تحققت"
+    text = (
+        "⚠️ <b>يجب عليك الاشتراك في القناة والجروب أولاً!</b>\n\n"
+        "1️⃣ اشترك في القناة\n"
+        "2️⃣ انضم للجروب\n"
+        "3️⃣ اضغط تحققت ✅"
+    )
     if is_callback:
         await target.message.reply_text(text, reply_markup=keyboard, parse_mode="HTML")
     else:
@@ -96,16 +113,21 @@ async def delete_message_after_delay(context, chat_id, message_id, delay):
     try: await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
     except: pass
 
-# ===== callback: لما حد يضغط الزر =====
+# ===== callback: تحقق من الاشتراك =====
 
 async def handle_check_subscription(update, context):
     query = update.callback_query
     user_id = query.from_user.id
     await query.answer()
     if await is_subscribed(context, user_id):
-        await query.message.edit_text("✅ <b>تم التحقق! شكراً لاشتراكك.</b>\nدلوقتي اضغط الزر في الجروب مرة تانية.", parse_mode="HTML")
+        await query.message.edit_text(
+            "✅ <b>تم التحقق! شكراً لاشتراكك.</b>\nدلوقتي اضغط الزر في الجروب مرة تانية.",
+            parse_mode="HTML"
+        )
     else:
-        await query.answer("❌ لسه مشتركتش في القناة!", show_alert=True)
+        await query.answer("❌ لسه مشتركتش في القناة والجروب!", show_alert=True)
+
+# ===== callback: رابط الدعوة =====
 
 async def handle_invite_callback(update, context):
     query = update.callback_query
@@ -114,7 +136,7 @@ async def handle_invite_callback(update, context):
 
     await query.answer()
 
-    # تحقق من الاشتراك
+    # تحقق من الاشتراك في القناة والجروب
     if not await is_subscribed(context, user_id):
         await send_subscribe_message(query, context, is_callback=True)
         return
@@ -126,7 +148,6 @@ async def handle_invite_callback(update, context):
     if existing_link:
         invite_link = existing_link
     else:
-        # عمل رابط جديد خاص بيه
         try:
             link_obj = await context.bot.create_chat_invite_link(
                 chat_id=TARGET_GROUP_ID,
@@ -140,7 +161,6 @@ async def handle_invite_callback(update, context):
             await query.answer("❌ حصل خطأ، حاول تاني.", show_alert=True)
             return
 
-    # بعت الرابط في الخاص
     fixed_link = invite_link.replace("+", "%2B")
     encoded_text = urllib.parse.quote(TARGET_GROUP_SHARE_TEXT, safe="")
     share_url = f"https://t.me/share/url?url={fixed_link}&text={encoded_text}"
@@ -159,7 +179,6 @@ async def handle_invite_callback(update, context):
             parse_mode="HTML"
         )
     except Exception:
-        # لو ملوش خاص مع البوت
         bot_link = f"https://t.me/{BOT_USERNAME}?start=getlink"
         kb = InlineKeyboardMarkup([[InlineKeyboardButton("ابدأ المحادثة مع البوت 👇", url=bot_link)]])
         await query.message.reply_text(
@@ -167,17 +186,17 @@ async def handle_invite_callback(update, context):
             reply_markup=kb
         )
 
-# ===== /start لما يجي من الجروب =====
+# ===== /start =====
 
 async def start_command(update, context):
     user_id = update.effective_user.id
     if update.effective_chat.type != "private":
         return
 
-    # تحقق من الاشتراك
     if not await is_subscribed(context, user_id):
         await send_subscribe_message(update.message, context)
         return
+
     data = load_invites()
     existing_link = data.get("links", {}).get(str(user_id))
 
@@ -245,15 +264,26 @@ async def on_chat_member_updated(update, context):
         except Exception as e: print(f"Error promote: {e}")
         return
 
-    # لو حد انضم للتارجت جروب، شوف جاء من رابط مين
+    # لو حد انضم للتارجت جروب - احسب الانفايت
     if (result.new_chat_member.status == ChatMemberStatus.MEMBER
             and update.effective_chat.id == TARGET_GROUP_ID
             and result.new_chat_member.user.id not in MY_USER_IDS):
-        invite_link = getattr(result, 'invite_link', None)
-        if invite_link:
-            link_str = invite_link.invite_link if hasattr(invite_link, 'invite_link') else str(invite_link)
+
+        # جرب تاخد الرابط من كل الطرق الممكنة
+        invite_link_obj = getattr(result, 'invite_link', None)
+        link_str = None
+
+        if invite_link_obj:
+            if hasattr(invite_link_obj, 'invite_link'):
+                link_str = invite_link_obj.invite_link
+            elif isinstance(invite_link_obj, str):
+                link_str = invite_link_obj
+
+        print(f"[INVITE] New member: {result.new_chat_member.user.id}, link: {link_str}")
+
+        if link_str:
             inviter_id = get_user_id_by_link(link_str)
-            if inviter_id:
+            if inviter_id and inviter_id != result.new_chat_member.user.id:
                 increment_invite(inviter_id)
                 count = get_invite_count(inviter_id)
                 new_member_name = html.escape(result.new_chat_member.user.first_name)
