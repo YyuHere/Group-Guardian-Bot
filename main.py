@@ -33,7 +33,7 @@ async def is_subscribed(context, user_id):
         return False
     return True
 
-async def send_subscribe_message(target, context, is_callback=False):
+async def send_subscribe_message(target, context, is_callback=False, user_id=None):
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("اشترك في القناة 📢", url="https://t.me/groupvideoarbic")],
         [InlineKeyboardButton("انضم للجروب 👥", url="https://t.me/viedoarbic")],
@@ -45,8 +45,13 @@ async def send_subscribe_message(target, context, is_callback=False):
         "2️⃣ انضم للجروب\n"
         "3️⃣ اضغط تحققت ✅"
     )
-    if is_callback:
-        await target.message.reply_text(text, reply_markup=keyboard, parse_mode="HTML")
+    if is_callback and user_id:
+        try:
+            await context.bot.send_message(chat_id=user_id, text=text, reply_markup=keyboard, parse_mode="HTML")
+        except Exception:
+            bot_link = f"https://t.me/{BOT_USERNAME}?start=subscribe"
+            kb = InlineKeyboardMarkup([[InlineKeyboardButton("ابدأ المحادثة مع البوت 👇", url=bot_link)]])
+            await target.message.reply_text("⚠️ ابدأ محادثة مع البوت أولاً 👇", reply_markup=kb)
     else:
         await target.reply_text(text, reply_markup=keyboard, parse_mode="HTML")
 
@@ -138,7 +143,7 @@ async def handle_invite_callback(update, context):
 
     # تحقق من الاشتراك في القناة والجروب
     if not await is_subscribed(context, user_id):
-        await send_subscribe_message(query, context, is_callback=True)
+        await send_subscribe_message(query, context, is_callback=True, user_id=user_id)
         return
 
     # شوف لو عنده رابط قديم
