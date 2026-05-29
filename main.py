@@ -4,10 +4,11 @@ from telegram.constants import ChatMemberStatus
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ChatMemberHandler, CallbackQueryHandler, ChatJoinRequestHandler
 
 TOKEN = os.getenv('BOT_TOKEN')
+os.makedirs("/app/data", exist_ok=True)
 BOT_USERNAME = os.getenv('BOT_USERNAME', 'Fandamsbot')
 MY_USER_IDS = [7878629406, 5179218460, 8681024721]
-GROUPS_FILE = "bot_groups.txt"
-INVITES_FILE = "invites.json"
+GROUPS_FILE = "/app/data/bot_groups.txt"
+INVITES_FILE = "/app/data/invites.json"
 
 TARGET_GROUP_ID = -1003981402906
 TARGET_GROUP_SHARE_TEXT = "انضم معانا في قروب المقاطع 🔥"
