@@ -5,7 +5,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 
 TOKEN = os.getenv('BOT_TOKEN')
 BOT_USERNAME = os.getenv('BOT_USERNAME', 'Fandamsbot')  # مثال: mybot (بدون @)
-MY_USER_IDS = [7878629406, 5179218460]
+MY_USER_IDS = [7878629406, 5179218460, 8681024721]
 GROUPS_FILE = "bot_groups.txt"
 INVITES_FILE = "invites.json"
 
