@@ -16,6 +16,8 @@ REQUIRED_CHANNEL = "@groupvideoarbic"
 REQUIRED_GROUP_ID = -1003859653293
 REQUIRED_GROUP_USERNAME = "viedoarbic"
 
+MAX_INVITE_POINTS = 4  # Hard cap: no user may exceed this count
+
 # ===== التحقق من الاشتراك =====
 
 async def is_subscribed(context, user_id):
@@ -81,13 +83,45 @@ def get_user_id_by_link(link):
             return int(uid)
     return None
 
-def increment_invite(user_id):
+def try_increment_invite(inviter_id):
+    """
+    Attempts to credit 1 point to the inviter following two rules:
+      1. Alternating logic: only every 2nd successful join earns a point
+         (1st join → point, 2nd join → ignored, 3rd → point, 4th → ignored, …)
+      2. Hard cap: the point counter must never exceed MAX_INVITE_POINTS (4).
+
+    Returns True if a point was actually credited, False if the join was
+    silently ignored (alternating skip or cap already reached).
+    """
     data = load_invites()
+    uid = str(inviter_id)
+
+    # Initialise sub-dicts if missing
     if "counts" not in data:
         data["counts"] = {}
-    uid = str(user_id)
-    data["counts"][uid] = data["counts"].get(uid, 0) + 1
+    if "raw_joins" not in data:
+        data["raw_joins"] = {}
+
+    current_points = data["counts"].get(uid, 0)
+    raw_joins = data["raw_joins"].get(uid, 0)  # total successful joins (before cap/alternating)
+
+    # Increment raw join counter unconditionally
+    raw_joins += 1
+    data["raw_joins"][uid] = raw_joins
+
+    # Rule 1 – alternating: only odd-numbered raw joins earn a point
+    # (1st, 3rd, 5th, … → credit; 2nd, 4th, 6th, … → skip)
+    is_creditable_turn = (raw_joins % 2 == 1)
+
+    # Rule 2 – hard cap
+    if not is_creditable_turn or current_points >= MAX_INVITE_POINTS:
+        save_invites(data)
+        return False  # silently ignored
+
+    # Credit the point
+    data["counts"][uid] = current_points + 1
     save_invites(data)
+    return True
 
 def decrement_invite(user_id):
     data = load_invites()
@@ -154,17 +188,13 @@ async def handle_check_subscription(update, context):
 
 async def get_or_create_invite_link(context, user_id):
     """يرجع الرابط المحفوظ أو يجيبه من تيليجرام أو يعمل واحد جديد"""
-    # 1. جرب الـ json الأول
     data = load_invites()
     existing_link = data.get("links", {}).get(str(user_id))
     if existing_link:
         return existing_link
 
-    # 2. جرب تجيب كل روابط الجروب من تيليجرام وتدور على رابط بنفس الاسم
     try:
         invite_name = f"invite_{user_id}"
-        # عمل رابط جديد - تيليجرام بيرفض لو نفس الاسم موجود
-        # فأول نعمل واحد جديد
         link_obj = await context.bot.create_chat_invite_link(
             chat_id=TARGET_GROUP_ID,
             name=invite_name,
@@ -176,8 +206,6 @@ async def get_or_create_invite_link(context, user_id):
     except Exception as e:
         err = str(e)
         print(f"[INVITE] Error for {user_id}: {err}")
-        # لو الخطأ إن الاسم متكرر، معناه رابط موجود بس مش محفوظ عندنا
-        # مش قادرين نجيبه من تيليجرام مباشرة، فنعمل رابط باسم مختلف
         try:
             import time
             unique_name = f"inv_{user_id}_{int(time.time()) % 10000}"
@@ -202,12 +230,10 @@ async def handle_invite_callback(update, context):
 
     await query.answer()
 
-    # تحقق من الاشتراك في القناة والجروب
     if not await is_subscribed(context, user_id):
         await send_subscribe_message(query, context, is_callback=True, user_id=user_id)
         return
 
-    # شوف لو عنده رابط قديم
     invite_link = await get_or_create_invite_link(context, user_id)
     if not invite_link:
         await query.answer("❌ حصل خطأ، حاول تاني.", show_alert=True)
@@ -306,8 +332,6 @@ async def on_chat_member_updated(update, context):
             await update.effective_chat.send_message("👑 أهلاً بك يا مطوري العزيز! تم رفعك مشرفاً تلقائياً.")
         except Exception as e: print(f"Error promote: {e}")
         return
-
-    # لو حد انضم للتارجت جروب - الانفايت بيتحسب في handle_join_request
 
     # لو حد خرج من التارجت جروب - انقص انفايت الشخص اللي دعاه
     if (update.effective_chat.id == TARGET_GROUP_ID and
@@ -427,10 +451,22 @@ async def send_permanent_message(update, context):
 
 
 async def handle_join_request(update, context):
-    """بيشتغل لما حد يطلب الانضمام عن طريق رابط join_request"""
+    """
+    Fires when someone requests to join via a join_request invite link.
+
+    Point rules (enforced inside try_increment_invite):
+      • Alternating:  only the 1st, 3rd, 5th, … join earns a point.
+      • Hard cap:     an inviter's point total can never exceed MAX_INVITE_POINTS (4).
+
+    Notification rule:
+      • A message is sent to the inviter ONLY when a point is actually credited.
+      • Silently skipped joins (alternating or capped) produce NO notification.
+    """
     request = update.chat_join_request
-    if not request: return
-    if request.chat.id != TARGET_GROUP_ID: return
+    if not request:
+        return
+    if request.chat.id != TARGET_GROUP_ID:
+        return
 
     user_id = request.from_user.id
     invite_link_obj = getattr(request, 'invite_link', None)
@@ -444,40 +480,59 @@ async def handle_join_request(update, context):
 
     print(f"[JOIN_REQUEST] user: {user_id}, link: {link_str}")
 
-    # وافق على الطلب
+    # Always approve the join request, regardless of point outcome
     try:
         await context.bot.approve_chat_join_request(chat_id=TARGET_GROUP_ID, user_id=user_id)
     except Exception as e:
         print(f"Error approving: {e}")
 
-    # احسب الانفايت
-    if link_str:
-        inviter_id = get_user_id_by_link(link_str)
-        if inviter_id and inviter_id != user_id:
-            # تحقق إن نفس اليوزر ده ما اتحسبش قبل كده
-            data = load_invites()
-            joined_users = data.get("joined_users", [])
-            if user_id in joined_users:
-                print(f"[JOIN_REQUEST] user {user_id} already counted, skipping.")
-                return
-            # سجّله عشان ما يتحسبش تاني
-            joined_users.append(user_id)
-            data["joined_users"] = joined_users
-            save_invites(data)
-            save_user_inviter(user_id, inviter_id)
+    # Only attempt to credit a point when we have a known invite link
+    if not link_str:
+        return
 
-            increment_invite(inviter_id)
-            count = get_invite_count(inviter_id)
-            new_member_name = html.escape(request.from_user.first_name)
-            try:
-                await context.bot.send_message(
-                    chat_id=inviter_id,
-                    text=f"✅ <b>{new_member_name}</b> انضم للجروب من رابطك!\n"
-                         f"👥 إجمالي انفايتاتك: <b>{count}</b>",
-                    parse_mode="HTML"
-                )
-            except: pass
+    inviter_id = get_user_id_by_link(link_str)
 
+    # Ignore self-joins or unknown links
+    if not inviter_id or inviter_id == user_id:
+        return
+
+    # Guard: ensure this joining user is counted only once across all inviters
+    data = load_invites()
+    joined_users = data.get("joined_users", [])
+    if user_id in joined_users:
+        print(f"[JOIN_REQUEST] user {user_id} already counted, skipping.")
+        return
+
+    # Mark this user as processed so they can't be counted again
+    joined_users.append(user_id)
+    data["joined_users"] = joined_users
+    save_invites(data)
+
+    # Record who invited this user (needed for decrement on leave)
+    save_user_inviter(user_id, inviter_id)
+
+    # Apply alternating + cap logic; returns True only if a point was credited
+    point_credited = try_increment_invite(inviter_id)
+
+    if point_credited:
+        # Notify the inviter only on a successful point credit
+        count = get_invite_count(inviter_id)
+        new_member_name = html.escape(request.from_user.first_name)
+        try:
+            await context.bot.send_message(
+                chat_id=inviter_id,
+                text=f"✅ <b>{new_member_name}</b> انضم للجروب من رابطك!\n"
+                     f"👥 إجمالي انفايتاتك: <b>{count}</b>",
+                parse_mode="HTML"
+            )
+        except Exception as e:
+            print(f"[JOIN_REQUEST] Error notifying inviter {inviter_id}: {e}")
+    else:
+        # Alternating skip or cap reached — silently do nothing
+        print(
+            f"[JOIN_REQUEST] No point credited for inviter {inviter_id} "
+            f"(raw_joins parity or cap={MAX_INVITE_POINTS} reached). Notification suppressed."
+        )
 
 
 async def reset_command(update, context):
@@ -496,13 +551,10 @@ async def clearlinks_command(update, context):
     failed = 0
     
     try:
-        # جيب كل روابط الجروب
         invite_links = await context.bot.get_chat(TARGET_GROUP_ID)
-        # مسح الـ json
         if os.path.exists(INVITES_FILE):
             os.remove(INVITES_FILE)
         
-        # مسح كل الروابط من تيليجرام
         data = load_invites()
         for uid, link in data.get("links", {}).items():
             try:
@@ -517,7 +569,6 @@ async def clearlinks_command(update, context):
     except Exception as e:
         print(f"Error: {e}")
     
-    # مسح الـ json على طول
     if os.path.exists(INVITES_FILE):
         os.remove(INVITES_FILE)
     
